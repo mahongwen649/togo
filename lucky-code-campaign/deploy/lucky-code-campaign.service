@@ -1,0 +1,23 @@
+[Unit]
+Description=TogoAPI Gift Campaign
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/lucky-code-campaign
+EnvironmentFile=/opt/lucky-code-campaign/.env
+ExecStart=/opt/lucky-code-campaign/lucky-code-campaign-linux-amd64
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lucky-code-campaign/data
+
+[Install]
+WantedBy=multi-user.target
