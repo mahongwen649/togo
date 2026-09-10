@@ -32,6 +32,10 @@ type Config struct {
 	SSOSecret           string
 	SSOIssuer           string
 	SSOAudience         string
+	PortalBaseURL       string
+	CoreBaseURL         string
+	OpenAIGroupID       int64
+	GrokGroupID         int64
 }
 
 func Load() (Config, error) {
@@ -72,6 +76,10 @@ func loadFromEnv() (Config, error) {
 		SSOSecret:           os.Getenv("IMGTOOL_SSO_SECRET"),
 		SSOIssuer:           getenv("IMGTOOL_SSO_ISSUER", "sub2api"),
 		SSOAudience:         getenv("IMGTOOL_SSO_AUDIENCE", "imgtool"),
+		PortalBaseURL:       getenv("IMGTOOL_PORTAL_BASE_URL", "http://127.0.0.1:3000"),
+		CoreBaseURL:         getenv("IMGTOOL_INTERNAL_CORE_BASE_URL", "http://127.0.0.1:8080"),
+		OpenAIGroupID:       int64(getenvInt("IMGTOOL_OPENAI_GROUP_ID", 15)),
+		GrokGroupID:         int64(getenvInt("IMGTOOL_GROK_GROUP_ID", 33)),
 	}
 	if cfg.Secret == "" {
 		return Config{}, errors.New("IMGTOOL_SECRET is required")

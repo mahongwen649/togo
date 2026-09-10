@@ -10,75 +10,6 @@ import (
 	"imgtool/server/internal/secure"
 )
 
-func TestGenerateTextCreatesHistoryRecord(t *testing.T) {
-	database := openTestDB(t)
-	channelService := channels.NewService(channels.NewSQLStore(database), secure.NewSecretBox("test-secret"))
-	historyService := history.NewService(database)
-	provider := &fakeProvider{text: "caption result"}
-	service := NewService(channelService, historyService, provider)
-
-	channel, err := channelService.Create("alice", channels.CreateInput{
-		Name:    "OpenAI",
-		BaseURL: "https://api.openai.com",
-		APIKey:  "sk-alice",
-		Models:  []channels.ModelInput{{ID: "gpt-4o", Capabilities: []string{"image-to-text"}}},
-	})
-	if err != nil {
-		t.Fatalf("Create channel: %v", err)
-	}
-
-	result, err := service.GenerateText("alice", TextRequest{
-		ChannelID: channel.ID,
-		ModelID:   "gpt-4o",
-		Prompt:    "describe this",
-		Image:     []byte("fake-image"),
-		MimeType:  "image/png",
-	})
-	if err != nil {
-		t.Fatalf("GenerateText returned error: %v", err)
-	}
-	if result.ResultText != "caption result" || result.HistoryID == "" || result.TaskID == "" || result.DurationMs < 0 {
-		t.Fatalf("unexpected result: %#v", result)
-	}
-	if provider.lastSnapshot.APIKey != "sk-alice" {
-		t.Fatalf("provider APIKey = %q", provider.lastSnapshot.APIKey)
-	}
-
-	records, err := historyService.ListHistory("alice", 10)
-	if err != nil {
-		t.Fatalf("ListHistory returned error: %v", err)
-	}
-	if len(records) != 1 || records[0].ResultText != "caption result" {
-		t.Fatalf("unexpected records: %#v", records)
-	}
-}
-
-func TestGenerateTextRejectsOtherUsersChannel(t *testing.T) {
-	database := openTestDB(t)
-	channelService := channels.NewService(channels.NewSQLStore(database), secure.NewSecretBox("test-secret"))
-	service := NewService(channelService, history.NewService(database), &fakeProvider{text: "caption result"})
-
-	channel, err := channelService.Create("alice", channels.CreateInput{
-		Name:    "OpenAI",
-		BaseURL: "https://api.openai.com",
-		APIKey:  "sk-alice",
-		Models:  []channels.ModelInput{{ID: "gpt-4o", Capabilities: []string{"image-to-text"}}},
-	})
-	if err != nil {
-		t.Fatalf("Create channel: %v", err)
-	}
-
-	if _, err := service.GenerateText("bob", TextRequest{
-		ChannelID: channel.ID,
-		ModelID:   "gpt-4o",
-		Prompt:    "describe this",
-		Image:     []byte("fake-image"),
-		MimeType:  "image/png",
-	}); err == nil {
-		t.Fatal("bob generated with alice channel")
-	}
-}
-
 func TestGenerateImageCreatesHistoryWithFile(t *testing.T) {
 	database := openTestDB(t)
 	channelService := channels.NewService(channels.NewSQLStore(database), secure.NewSecretBox("test-secret"))
@@ -174,14 +105,8 @@ func TestGenerateImageToImageCreatesHistoryWithReferenceAndResultFiles(t *testin
 }
 
 type fakeProvider struct {
-	text         string
 	images       []ImageResult
 	lastSnapshot channels.Snapshot
-}
-
-func (p *fakeProvider) GenerateText(snapshot channels.Snapshot, request TextRequest) (string, error) {
-	p.lastSnapshot = snapshot
-	return p.text, nil
 }
 
 func (p *fakeProvider) GenerateImage(snapshot channels.Snapshot, request ImageRequest) ([]ImageResult, error) {

@@ -13,6 +13,7 @@ import (
 	"imgtool/server/internal/channels"
 	"imgtool/server/internal/generation"
 	"imgtool/server/internal/history"
+	"imgtool/server/internal/providers"
 )
 
 type Dependencies struct {
@@ -20,6 +21,7 @@ type Dependencies struct {
 	Channels      *channels.Service
 	History       *history.Service
 	Generation    *generation.Service
+	Providers     *providers.Service
 	FileSigner    FileSigner
 	FileReader    FileReader
 	FileDeleter   FileDeleter
@@ -337,6 +339,24 @@ func NewServer(deps Dependencies) http.Handler {
 			})
 		}
 	}
+	if deps.Auth != nil && deps.Providers != nil {
+		mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
+			user, ok := requireUser(w, r, deps.Auth)
+			if !ok {
+				return
+			}
+			items, err := deps.Providers.List(r.Context(), user)
+			if err != nil {
+				if errors.Is(err, providers.ErrUnknownUser) {
+					Fail(w, http.StatusBadRequest, "providers", "main_site_required", "请从主站进入后再使用生图")
+					return
+				}
+				Fail(w, http.StatusBadGateway, "providers", "list_providers_failed", "生图通道准备失败，请稍后重试")
+				return
+			}
+			OK(w, map[string]any{"defaultProviderId": "openai", "providers": items})
+		})
+	}
 	if deps.Auth != nil && deps.Generation != nil {
 		mux.HandleFunc("POST /api/generate/image", func(w http.ResponseWriter, r *http.Request) {
 			user, ok := requireUser(w, r, deps.Auth)
@@ -361,6 +381,8 @@ func NewServer(deps Dependencies) http.Handler {
 				}
 				count, _ := strconv.Atoi(r.FormValue("count"))
 				result, err := deps.Generation.StartImage(user.ID, generation.ImageRequest{
+					ProviderID:  r.FormValue("providerId"),
+					CoreUserID:  user.ExternalSubject,
 					ChannelID:   r.FormValue("channelId"),
 					ModelID:     r.FormValue("modelId"),
 					Prompt:      r.FormValue("prompt"),
@@ -381,6 +403,7 @@ func NewServer(deps Dependencies) http.Handler {
 				return
 			}
 			var input struct {
+				ProviderID  string `json:"providerId"`
 				ChannelID   string `json:"channelId"`
 				ModelID     string `json:"modelId"`
 				Prompt      string `json:"prompt"`
@@ -395,6 +418,8 @@ func NewServer(deps Dependencies) http.Handler {
 				return
 			}
 			result, err := deps.Generation.StartImage(user.ID, generation.ImageRequest{
+				ProviderID:  input.ProviderID,
+				CoreUserID:  user.ExternalSubject,
 				ChannelID:   input.ChannelID,
 				ModelID:     input.ModelID,
 				Prompt:      input.Prompt,
@@ -406,39 +431,6 @@ func NewServer(deps Dependencies) http.Handler {
 			})
 			if err != nil {
 				Fail(w, http.StatusBadRequest, "generation", "generate_image_failed", err.Error())
-				return
-			}
-			OK(w, result)
-		})
-		mux.HandleFunc("POST /api/generate/text", func(w http.ResponseWriter, r *http.Request) {
-			user, ok := requireUser(w, r, deps.Auth)
-			if !ok {
-				return
-			}
-			if err := r.ParseMultipartForm(12 << 20); err != nil {
-				Fail(w, http.StatusBadRequest, "generation", "invalid_form", "生成请求格式错误")
-				return
-			}
-			file, header, err := r.FormFile("inputImage")
-			if err != nil {
-				Fail(w, http.StatusBadRequest, "generation", "missing_input_image", "图生文需要上传输入图片")
-				return
-			}
-			defer file.Close()
-			bytes, err := io.ReadAll(io.LimitReader(file, 10*1024*1024+1))
-			if err != nil || len(bytes) == 0 || len(bytes) > 10*1024*1024 {
-				Fail(w, http.StatusBadRequest, "generation", "invalid_input_image", "输入图片无效或超过 10 MB")
-				return
-			}
-			result, err := deps.Generation.GenerateText(user.ID, generation.TextRequest{
-				ChannelID: r.FormValue("channelId"),
-				ModelID:   r.FormValue("modelId"),
-				Prompt:    r.FormValue("prompt"),
-				Image:     bytes,
-				MimeType:  inputImageMimeType(header.Header.Get("Content-Type"), bytes),
-			})
-			if err != nil {
-				Fail(w, http.StatusBadRequest, "generation", "generate_text_failed", err.Error())
 				return
 			}
 			OK(w, result)

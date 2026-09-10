@@ -8,12 +8,12 @@ This project will be built as a private multi-account web app, not a full SaaS p
 - There is one built-in `admin` account.
 - `admin` can create accounts, disable accounts, and reset passwords.
 - Normal users cannot self-register.
-- Each user has their own channels and API keys.
-- Each user can only access their own tasks, history, generated images, and channel settings.
+- Core owns user API keys and model groups; Imgtool does not ask users to configure them.
+- Each user can only access their own tasks, history, and generated images.
 - Login uses username and password.
 - The app uses minimal server-side login checks with an HttpOnly cookie and server session validation.
 - Passwords are stored as hashes, not plaintext.
-- Channel API keys are stored server-side and should be encrypted with `IMGTOOL_SECRET`.
+- Imgtool receives the selected user's Core image key server-to-server through Portal and never exposes it to the browser.
 
 ## Database And Storage
 
@@ -121,12 +121,20 @@ Imgtool validates the short-lived ticket, creates its own HttpOnly session cooki
 
 When a browser reaches Imgtool without a valid session, the frontend shows a "please enter from the main site" message instead of an account/password login form.
 
-## Grok Imagine Image Generation
+## Image Generation Providers
 
-The image workspace includes separate presets for `grok-imagine-image-2.0` image generation
-and `grok-4.6` image-to-text/visual understanding. Add the models to a channel backed by
-your TogoAPI/Core Grok group. The Imagine model additionally requires image generation to
-be enabled for that group, then use:
+The image workspace has two providers: OpenAI and Grok. On SSO entry, Portal checks for
+an active user key in Core group `15` (`gpt-image-2【5分钱一张】`) and group `33`
+(`Grok Heavy`), creating the missing key in the background. Imgtool then queries the
+models visible to each key and keeps only image-generation models. Users only choose the
+provider and model; no API key, Base URL, or manual channel setup is required.
+
+The workspace supports:
+
+- text-to-image;
+- image-to-image with one reference image.
+
+Grok Imagine models additionally support:
 
 - text-to-image with `aspect_ratio`, `resolution` (`1k` or `2k`), and `quality` (`low` or `medium`);
 - image-to-image with one reference image, `aspect_ratio` (including `auto`) and `resolution`.
@@ -137,7 +145,7 @@ recognized by the workspace.
 
 For production deployments on the same host as Sub2API Core, set
 `IMGTOOL_INTERNAL_CORE_BASE_URL=http://127.0.0.1:8080`. Imgtool will use this address for
-`api.togoapi.com` channel requests, avoiding the CDN timeout on long-running image jobs.
+Core requests, avoiding the CDN timeout on long-running image jobs.
 
 ## Deletion Policy
 

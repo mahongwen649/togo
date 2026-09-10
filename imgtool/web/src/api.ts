@@ -20,7 +20,7 @@ export type CurrentUser = {
   role: "admin" | "user";
 };
 
-export type Capability = "text-to-image" | "image-to-image" | "image-to-text";
+export type Capability = "text-to-image" | "image-to-image";
 
 export type ChannelModel = {
   id: string;
@@ -37,11 +37,13 @@ export type Channel = {
   updatedAt?: number;
 };
 
-export type ChannelInput = {
+export type ImageProvider = {
+  id: "openai" | "grok" | string;
   name: string;
-  baseUrl: string;
-  apiKey: string;
   models: ChannelModel[];
+  defaultModelId?: string;
+  available: boolean;
+  message?: string;
 };
 
 export type AdminUser = {
@@ -126,28 +128,11 @@ export async function logout() {
   });
 }
 
-export async function listChannels() {
-  return request<{ channels: Channel[] }>("/api/channels");
-}
-
-export async function createChannel(input: ChannelInput) {
-  return request<{ channel: Channel }>("/api/channels", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function updateChannel(id: string, input: ChannelInput) {
-  return request<{ channel: Channel }>(`/api/channels/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function deleteChannel(id: string) {
-  return request<{ deleted: boolean }>(`/api/channels/${id}`, {
-    method: "DELETE",
-  });
+export async function listProviders() {
+  return request<{
+    defaultProviderId: string;
+    providers: ImageProvider[];
+  }>("/api/providers");
 }
 
 export async function listAdminUsers() {
@@ -182,11 +167,8 @@ export async function resetAdminUserPassword(id: string, password: string) {
   );
 }
 
-export async function generateText(formData: FormData) {
-  return requestForm<GenerationResult>("/api/generate/text", formData);
-}
-
 export async function generateImage(input: {
+  providerId: string;
   channelId: string;
   modelId: string;
   prompt: string;

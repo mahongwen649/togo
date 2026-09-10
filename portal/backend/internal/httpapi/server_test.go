@@ -565,8 +565,8 @@ func TestImgtoolURLReturnsConfiguredExternalLink(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"redirect_url":"http://8.222.223.187/sso?ticket=`) {
 		t.Fatalf("response=%d %s", recorder.Code, recorder.Body.String())
 	}
-	if core.request.Path != "" {
-		t.Fatalf("imgtool route should not proxy to Core, got %+v", core.request)
+	if core.request.Path != "" && core.request.Path != "/api/v1/keys" {
+		t.Fatalf("imgtool route should only prepare keys, got %+v", core.request)
 	}
 }
 

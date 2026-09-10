@@ -390,60 +390,6 @@ func TestCancelTaskHTTPCompletesCurrentUsersRunningTask(t *testing.T) {
 	}
 }
 
-func TestGenerateTextHTTP(t *testing.T) {
-	authService := newBootstrappedService(t)
-	database := openHTTPTestDB(t)
-	channelService := channels.NewService(channels.NewSQLStore(database), secure.NewSecretBox("test-secret"))
-	historyService := history.NewService(database)
-	provider := &fakeTextProvider{text: "caption result"}
-	generationService := generation.NewService(channelService, historyService, provider)
-	server := NewServer(Dependencies{Auth: authService, Channels: channelService, History: historyService, Generation: generationService})
-	adminCookie := loginCookie(t, server, "admin", "secret")
-	adminID := firstAdminID(t, authService)
-	seedUserID(t, database, adminID)
-
-	channel, err := channelService.Create(adminID, channels.CreateInput{
-		Name:    "OpenAI",
-		BaseURL: "https://api.openai.com",
-		APIKey:  "sk-admin",
-		Models:  []channels.ModelInput{{ID: "gpt-4o", Capabilities: []string{"image-to-text"}}},
-	})
-	if err != nil {
-		t.Fatalf("Create channel: %v", err)
-	}
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	_ = writer.WriteField("channelId", channel.ID)
-	_ = writer.WriteField("modelId", "gpt-4o")
-	_ = writer.WriteField("prompt", "describe this")
-	fileHeader := make(textproto.MIMEHeader)
-	fileHeader.Set("Content-Disposition", `form-data; name="inputImage"; filename="test.png"`)
-	fileHeader.Set("Content-Type", "application/octet-stream")
-	fileWriter, err := writer.CreatePart(fileHeader)
-	if err != nil {
-		t.Fatalf("CreateFormFile: %v", err)
-	}
-	_, _ = fileWriter.Write([]byte("\x89PNG\r\n\x1a\nfake-image"))
-	_ = writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/generate/text", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.AddCookie(adminCookie)
-	res := httptest.NewRecorder()
-	server.ServeHTTP(res, req)
-
-	if res.Code != http.StatusOK {
-		t.Fatalf("generate status = %d, body = %s", res.Code, res.Body.String())
-	}
-	if !bytes.Contains(res.Body.Bytes(), []byte("caption result")) {
-		t.Fatalf("missing text result: %s", res.Body.String())
-	}
-	if provider.lastTextRequest.MimeType != "image/png" {
-		t.Fatalf("text image mime = %q", provider.lastTextRequest.MimeType)
-	}
-}
-
 func TestGenerateImageHTTP(t *testing.T) {
 	authService := newBootstrappedService(t)
 	database := openHTTPTestDB(t)
@@ -1018,15 +964,8 @@ func awaitHistoryCount(t *testing.T, service *history.Service, userID string, co
 }
 
 type fakeTextProvider struct {
-	text             string
 	images           []generation.ImageResult
-	lastTextRequest  generation.TextRequest
 	lastImageRequest generation.ImageRequest
-}
-
-func (p *fakeTextProvider) GenerateText(_ channels.Snapshot, request generation.TextRequest) (string, error) {
-	p.lastTextRequest = request
-	return p.text, nil
 }
 
 func (p *fakeTextProvider) GenerateImage(_ channels.Snapshot, request generation.ImageRequest) ([]generation.ImageResult, error) {
@@ -1058,10 +997,6 @@ func newBlockingImageProvider() *blockingImageProvider {
 		started:  make(chan struct{}),
 		released: make(chan struct{}),
 	}
-}
-
-func (p *blockingImageProvider) GenerateText(_ channels.Snapshot, _ generation.TextRequest) (string, error) {
-	return "", nil
 }
 
 func (p *blockingImageProvider) GenerateImage(_ channels.Snapshot, _ generation.ImageRequest) ([]generation.ImageResult, error) {

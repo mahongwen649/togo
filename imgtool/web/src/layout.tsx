@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, NavLink, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router";
 import { AuthProvider, useAuth } from "./auth";
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -35,13 +35,11 @@ function LoginPage() {
 
 export function Shell({
   workspace,
-  settings,
   history,
   adminUsers,
   forbidden
 }: {
   workspace: ReactNode;
-  settings: ReactNode;
   history: ReactNode;
   adminUsers: ReactNode;
   forbidden: ReactNode;
@@ -58,7 +56,6 @@ export function Shell({
           <NavLink to="/" end>
             创作
           </NavLink>
-          <NavLink to="/settings">设置</NavLink>
           <NavLink to="/history">历史</NavLink>
           {auth.user?.role === "admin" ? <NavLink to="/admin/users">用户</NavLink> : null}
         </nav>
@@ -66,9 +63,9 @@ export function Shell({
       <section className="workspace">
         <Routes>
           <Route element={workspace} path="/" />
-          <Route element={settings} path="/settings" />
           <Route element={history} path="/history" />
           <Route element={auth.user?.role === "admin" ? adminUsers : forbidden} path="/admin/users" />
+          <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>
       </section>
     </main>

@@ -13,23 +13,9 @@ import (
 var ErrInvalidRequest = errors.New("invalid generation request")
 var ErrStorageNotConfigured = errors.New("image storage is not configured")
 
-type TextRequest struct {
-	ChannelID string
-	ModelID   string
-	Prompt    string
-	Image     []byte
-	MimeType  string
-}
-
-type TextResult struct {
-	TaskID     string `json:"taskId"`
-	HistoryID  string `json:"historyId"`
-	Status     string `json:"status"`
-	DurationMs int64  `json:"durationMs"`
-	ResultText string `json:"resultText"`
-}
-
 type ImageRequest struct {
+	ProviderID  string
+	CoreUserID  string
 	ChannelID   string
 	ModelID     string
 	Prompt      string
@@ -87,8 +73,11 @@ type ImageTaskResponse struct {
 }
 
 type Provider interface {
-	GenerateText(snapshot channels.Snapshot, request TextRequest) (string, error)
 	GenerateImage(snapshot channels.Snapshot, request ImageRequest) ([]ImageResult, error)
+}
+
+type SnapshotResolver interface {
+	ResolveImage(userID, coreUserID, providerID, modelID, capability string) (channels.Snapshot, error)
 }
 
 type Storage interface {
@@ -100,6 +89,7 @@ type Service struct {
 	history  *history.Service
 	provider Provider
 	storage  Storage
+	resolver SnapshotResolver
 }
 
 func NewService(channelService *channels.Service, historyService *history.Service, provider Provider, storage ...Storage) *Service {
@@ -110,50 +100,9 @@ func NewService(channelService *channels.Service, historyService *history.Servic
 	return service
 }
 
-func (s *Service) GenerateText(userID string, request TextRequest) (TextResult, error) {
-	if request.ChannelID == "" || request.ModelID == "" || request.Prompt == "" || len(request.Image) == 0 {
-		return TextResult{}, ErrInvalidRequest
-	}
-	snapshot, err := s.channels.ResolveSnapshot(userID, request.ChannelID, request.ModelID, "image-to-text")
-	if err != nil {
-		return TextResult{}, err
-	}
-	task, err := s.history.CreateTask(userID, history.TaskInput{
-		Kind:        "text",
-		ChannelID:   request.ChannelID,
-		ChannelName: snapshot.ChannelName,
-		BaseURL:     snapshot.BaseURL,
-		ModelID:     snapshot.ModelID,
-		Capability:  snapshot.Capability,
-		Prompt:      request.Prompt,
-		Parameters:  map[string]any{},
-	})
-	if err != nil {
-		return TextResult{}, err
-	}
-	text, err := s.provider.GenerateText(snapshot, request)
-	if err != nil {
-		_, _ = s.history.CompleteTask(userID, task.ID, history.CompleteInput{
-			Status:        "失败",
-			ErrorSource:   "upstream",
-			FailureReason: err.Error(),
-		})
-		return TextResult{}, err
-	}
-	record, err := s.history.CompleteTask(userID, task.ID, history.CompleteInput{
-		Status:     "完成",
-		ResultText: text,
-	})
-	if err != nil {
-		return TextResult{}, err
-	}
-	return TextResult{
-		TaskID:     task.ID,
-		HistoryID:  record.ID,
-		Status:     record.Status,
-		DurationMs: record.DurationMs,
-		ResultText: record.ResultText,
-	}, nil
+func (s *Service) WithResolver(resolver SnapshotResolver) *Service {
+	s.resolver = resolver
+	return s
 }
 
 func (s *Service) GenerateImage(userID string, request ImageRequest) (ImageResultResponse, error) {
@@ -191,7 +140,7 @@ func (s *Service) StartImage(userID string, request ImageRequest) (ImageTaskResp
 }
 
 func (s *Service) createImageTask(userID string, request ImageRequest) (history.Task, channels.Snapshot, ImageRequest, error) {
-	if request.ChannelID == "" || request.ModelID == "" || strings.TrimSpace(request.Prompt) == "" {
+	if request.ModelID == "" || strings.TrimSpace(request.Prompt) == "" {
 		return history.Task{}, channels.Snapshot{}, ImageRequest{}, ErrInvalidRequest
 	}
 	request.Count = 1
@@ -202,9 +151,12 @@ func (s *Service) createImageTask(userID string, request ImageRequest) (history.
 	if capability == "" {
 		capability = "text-to-image"
 	}
-	snapshot, err := s.channels.ResolveSnapshot(userID, request.ChannelID, request.ModelID, capability)
+	snapshot, err := s.resolveImageSnapshot(userID, request, capability)
 	if err != nil {
 		return history.Task{}, channels.Snapshot{}, ImageRequest{}, err
+	}
+	if request.ChannelID == "" {
+		request.ChannelID = request.ProviderID
 	}
 	task, err := s.history.CreateTask(userID, history.TaskInput{
 		Kind:        "image",
@@ -222,6 +174,18 @@ func (s *Service) createImageTask(userID string, request ImageRequest) (history.
 	return task, snapshot, request, nil
 }
 
+func (s *Service) resolveImageSnapshot(userID string, request ImageRequest, capability string) (channels.Snapshot, error) {
+	if strings.TrimSpace(request.ProviderID) != "" {
+		if s.resolver == nil {
+			return channels.Snapshot{}, ErrInvalidRequest
+		}
+		return s.resolver.ResolveImage(userID, request.CoreUserID, request.ProviderID, request.ModelID, capability)
+	}
+	if request.ChannelID == "" {
+		return channels.Snapshot{}, ErrInvalidRequest
+	}
+	return s.channels.ResolveSnapshot(userID, request.ChannelID, request.ModelID, capability)
+}
 
 func imageTaskParameters(request ImageRequest) map[string]any {
 	params := map[string]any{"count": request.Count}

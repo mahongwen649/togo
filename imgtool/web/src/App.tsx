@@ -8,14 +8,12 @@ import {
   useState,
 } from "react";
 import {
-  Download,
   ImagePlus,
   Layers,
   LoaderCircle,
   Maximize2,
   Send,
   SlidersHorizontal,
-  Upload,
   X,
   Zap,
 } from "lucide-react";
@@ -23,16 +21,13 @@ import type {
   AdminUser,
   Capability,
   Channel,
-  ChannelInput,
-  ChannelModel,
+  ImageProvider,
   HistoryRecord,
   ResultFile,
 } from "./api";
 import {
   cancelTask,
   createAdminUser,
-  createChannel,
-  deleteChannel,
   deleteHistoryRecord,
   generateImage,
   getFileContent,
@@ -40,12 +35,11 @@ import {
   getSignedFileURL,
   getTask,
   listAdminUsers,
-  listChannels,
+  listProviders,
   listHistory,
   listTasks,
   resetAdminUserPassword,
   setAdminUserDisabled,
-  updateChannel,
 } from "./api";
 import { useAuth } from "./auth";
 import {
@@ -65,21 +59,14 @@ import {
   GROK_ASPECT_RATIOS,
   GROK_QUALITY_PRESETS,
   GROK_RESOLUTIONS,
-  imageToTextModelHint,
   isGrokImagineModel,
-  isLikelyImageOnlyModel,
   isValidGrokAspectRatio,
   isValidGrokQuality,
   isValidGrokResolution,
-  modelFromId,
   MODEL_CAPABILITIES,
-  parseModelIdList,
-  PRESET_MODELS,
-  PRESET_MODEL_GROUPS,
   selectModelForCapability,
   SIZE_PRESETS,
 } from "./modelCatalog";
-import type { PresetModel } from "./modelCatalog";
 import type {
   ArtworkFeedItem,
   ComposerPreferences,
@@ -99,20 +86,10 @@ import {
   recentHistoryFeedItems,
   saveComposerPreferences,
   submitImageToImage,
-  submitImageToText,
   taskToRunningFeedTask,
   uniqueValues,
 } from "./workspaceHelpers";
 import "./styles.css";
-
-const TOGO_API_NAME = "TogoAPI";
-const TOGO_API_BASE_URL = "https://api.togoapi.com";
-
-function togoApiDefaultModels() {
-  return PRESET_MODELS.map((model) =>
-    modelFromId(model.id, [...model.capabilities]),
-  );
-}
 
 function isReferenceFile(file: ResultFile) {
   return file.role === "reference";
@@ -269,7 +246,6 @@ function AppShell() {
   return (
     <Shell
       workspace={<WorkspaceHome username={username} />}
-      settings={<SettingsPage username={username} />}
       history={<HistoryPage username={username} />}
       adminUsers={<AdminUsersPage username={username} />}
       forbidden={<ForbiddenPage username={username} />}
@@ -288,9 +264,12 @@ function WorkspaceHome({ username }: { username: string }) {
   }
   const initialPreferences = initialPreferencesRef.current.value;
   const [mode, setMode] = useState<Capability>(
-    initialPreferences?.capability ?? "text-to-image",
+    initialPreferences?.capability === "image-to-image"
+      ? "image-to-image"
+      : "text-to-image",
   );
-  const [channels, setChannels] = useState<Channel[]>([]);
+  const [providers, setProviders] = useState<ImageProvider[]>([]);
+  const [providerId, setProviderId] = useState("openai");
   const [channelId, setChannelId] = useState("");
   const [modelId, setModelId] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -393,7 +372,9 @@ function WorkspaceHome({ username }: { username: string }) {
     const draft = readReuseHistoryDraft();
     if (!draft) return;
     setReuseDraft(draft);
-    setMode(draft.capability);
+    setMode(
+      draft.capability === "image-to-image" ? "image-to-image" : "text-to-image",
+    );
     setPrompt(draft.prompt);
     applyGeometryFromDraft(draft);
     if (draft.notice) setMessage(draft.notice);
@@ -410,65 +391,61 @@ function WorkspaceHome({ username }: { username: string }) {
   }, []);
 
   useEffect(() => {
-    listChannels().then((payload) => {
-      if (!payload.ok) return;
-      const availableChannels = Array.isArray(payload.data.channels)
-        ? payload.data.channels
+    let active = true;
+    async function loadProviders() {
+      const payload = await listProviders();
+      if (!active) return;
+      if (!payload.ok) {
+        setProviders([]);
+        setError(payload.error?.message ?? "生图通道准备失败，请稍后重试");
+        return;
+      }
+      const nextProviders = Array.isArray(payload.data.providers)
+        ? payload.data.providers
         : [];
+      setProviders(nextProviders);
+      setError(undefined);
+      const preferredProvider =
+        nextProviders.find((item) => item.id === "openai" && item.available) ??
+        nextProviders.find((item) => item.available) ??
+        nextProviders.find((item) => item.id === "openai") ??
+        nextProviders[0];
+      const nextProvider =
+        reuseDraft?.channelName?.toLowerCase().includes("grok")
+          ? nextProviders.find((item) => item.id === "grok" && item.available) ??
+            nextProviders.find((item) => item.id === "grok") ??
+            preferredProvider
+          : preferredProvider;
+      if (!nextProvider) return;
+      setProviderId(nextProvider.id);
+      setChannelId(nextProvider.id);
       const requestedMode =
-        reuseDraft?.capability ?? initialPreferences?.capability ?? mode;
-      setChannels(availableChannels);
-      const reusedChannel = reuseDraft
-        ? availableChannels.find(
-            (channel) =>
-              channel.name === reuseDraft.channelName &&
-              channel.models.some(
-                (model) =>
-                  model.id === reuseDraft.modelId &&
-                  model.capabilities.includes(requestedMode),
-              ),
-          )
-        : undefined;
-      const preferredChannel =
-        !reuseDraft && initialPreferences?.channelId
-          ? availableChannels.find(
-              (channel) =>
-                channel.id === initialPreferences.channelId &&
-                channel.models.some((model) =>
-                  model.capabilities.includes(requestedMode),
-                ),
-            )
-          : undefined;
-      const firstChannel =
-        reusedChannel ??
-        preferredChannel ??
-        availableChannels.find((channel) =>
-          channel.models.some((model) =>
-            model.capabilities.includes(requestedMode),
-          ),
-        );
+        reuseDraft?.capability === "image-to-image" ? "image-to-image" : mode;
+      const preferredModel = nextProvider.models.find(
+        (item) => item.id === reuseDraft?.modelId,
+      );
+      const defaultModel = nextProvider.models.find(
+        (item) => item.id === nextProvider.defaultModelId,
+      );
       const firstModel =
-        (reusedChannel && reuseDraft
-          ? selectModelForCapability(
-              reusedChannel.models,
-              reuseDraft.modelId,
-              requestedMode,
-            )
-          : undefined) ??
-        (preferredChannel && initialPreferences?.modelId
-          ? selectModelForCapability(
-              preferredChannel.models,
-              initialPreferences.modelId,
-              requestedMode,
-            )
-          : undefined) ??
-        (firstChannel
-          ? selectModelForCapability(firstChannel.models, "", requestedMode)
-          : undefined);
-      if (firstChannel) setChannelId(firstChannel.id);
+        preferredModel ??
+        defaultModel ??
+        nextProvider.models.find((item) =>
+          item.capabilities.includes(requestedMode),
+        ) ??
+        nextProvider.models[0];
       if (firstModel) setModelId(firstModel.id);
+    }
+    void loadProviders().catch(() => {
+      if (active) {
+        setProviders([]);
+        setError("生图通道准备失败，请稍后重试");
+      }
     });
-  }, [initialPreferences, reuseDraft]);
+    return () => {
+      active = false;
+    };
+  }, [mode, reuseDraft]);
 
   useEffect(() => {
     let active = true;
@@ -508,11 +485,22 @@ function WorkspaceHome({ username }: { username: string }) {
     };
   }, []);
 
-  const modeChannels = channels.filter((channel) =>
-    channel.models.some((model) => model.capabilities.includes(mode)),
-  );
-  const selectedChannel =
-    modeChannels.find((channel) => channel.id === channelId) ?? modeChannels[0];
+  const availableProviders = providers.filter((provider) => provider.available);
+  const selectedProvider =
+    providers.find((provider) => provider.id === providerId && provider.available) ??
+    providers.find((provider) => provider.available) ??
+    providers.find((provider) => provider.id === providerId) ??
+    providers[0];
+  const selectedChannel: Channel | undefined = selectedProvider
+    ? {
+        id: selectedProvider.id,
+        name: selectedProvider.name,
+        baseUrl: "",
+        hasApiKey: true,
+        models: selectedProvider.models,
+      }
+    : undefined;
+  const modeChannels = selectedChannel ? [selectedChannel] : [];
   const modeModels =
     selectedChannel?.models.filter((model) =>
       model.capabilities.includes(mode),
@@ -545,19 +533,26 @@ function WorkspaceHome({ username }: { username: string }) {
   }, [grokImagine, composerSubmitMode]);
 
   useEffect(() => {
-    if (selectedChannel && selectedChannel.id !== channelId) {
-      setChannelId(selectedChannel.id);
+    if (selectedProvider && selectedProvider.id !== providerId) {
+      setProviderId(selectedProvider.id);
+      setChannelId(selectedProvider.id);
     }
-    const preferredModel = selectModelForCapability(modeModels, modelId, mode);
+    const providerDefaultModel = selectedProvider?.models.find(
+      (model) =>
+        model.id === selectedProvider.defaultModelId &&
+        model.capabilities.includes(mode),
+    );
+    const preferredModel =
+      providerDefaultModel ?? selectModelForCapability(modeModels, modelId, mode);
     if (preferredModel && preferredModel.id !== modelId) {
       setModelId(preferredModel.id);
     }
-  }, [channelId, mode, modeModels, modelId, selectedChannel]);
+  }, [channelId, mode, modeModels, modelId, selectedProvider, providerId]);
 
   useEffect(() => {
     if (!selectedChannel?.id || !modelId) return;
     saveComposerPreferences(username, {
-      channelId: selectedChannel.id,
+      channelId: selectedProvider.id,
       modelId,
       capability: mode,
       size,
@@ -565,7 +560,7 @@ function WorkspaceHome({ username }: { username: string }) {
         ? { aspectRatio, resolution, quality }
         : {}),
     });
-  }, [mode, modelId, selectedChannel?.id, size, aspectRatio, resolution, quality, username]);
+  }, [mode, modelId, selectedProvider?.id, size, aspectRatio, resolution, quality, username]);
 
   useEffect(() => {
     if (!image) {
@@ -723,8 +718,8 @@ function WorkspaceHome({ username }: { username: string }) {
     setError(undefined);
     setMessage(undefined);
     setGenerationToast(undefined);
-    if (!selectedChannel?.id || !modelId) {
-      setError("请先配置可用的供应源和模型");
+    if (!selectedProvider?.id || !selectedProvider.available || !modelId) {
+      setError("正在准备生图通道，请稍后重试");
       return;
     }
     if (!prompt.trim()) {
@@ -742,15 +737,9 @@ function WorkspaceHome({ username }: { username: string }) {
           ? "text-to-image"
           : mode;
     if (
-      (effectiveMode === "image-to-image" ||
-        effectiveMode === "image-to-text") &&
-      !image
+      effectiveMode === "image-to-image" && !image
     ) {
       setError("请上传参考图");
-      return;
-    }
-    if (effectiveMode === "image-to-text" && isLikelyImageOnlyModel(modelId)) {
-      setError(imageToTextModelHint(modelId));
       return;
     }
     const grokSubmit = isGrokImagineModel(modelId);
@@ -796,7 +785,7 @@ function WorkspaceHome({ username }: { username: string }) {
     const startedAt = Date.now();
     const taskDraft: RunningFeedTask = {
       prompt,
-      channelName: selectedChannel.name,
+      channelName: selectedProvider.name,
       modelId,
       capability: effectiveMode,
       phase: effectiveMode === "text-to-image" ? "submitting" : "uploading",
@@ -814,25 +803,22 @@ function WorkspaceHome({ username }: { username: string }) {
       const generationRequest =
         effectiveMode === "text-to-image"
           ? generateImage({
-              channelId: selectedChannel.id,
+              providerId: selectedProvider.id,
+              channelId: selectedProvider.id,
               modelId,
               prompt,
               ...imageParameters,
             })
           : effectiveMode === "image-to-image"
             ? submitImageToImage({
-                channelId: selectedChannel.id,
+                providerId: selectedProvider.id,
+                channelId: selectedProvider.id,
                 modelId,
                 prompt,
                 ...imageParameters,
                 image: image as File,
               })
-            : submitImageToText({
-                channelId: selectedChannel.id,
-                modelId,
-                prompt,
-                image: image as File,
-              });
+            : Promise.reject(new Error("unsupported generation mode"));
       void hydrateSubmittedRunningTask(generationSequence);
       const payload = await generationRequest;
       if (generationSequenceRef.current !== generationSequence) return;
@@ -860,7 +846,7 @@ function WorkspaceHome({ username }: { username: string }) {
         id: payload.data.historyId || payload.data.taskId,
         status: payload.data.status,
         prompt,
-        channelName: selectedChannel.name,
+        channelName: selectedProvider.name,
         modelId,
         capability: effectiveMode,
         parameters: imageParameters,
@@ -1077,25 +1063,14 @@ function WorkspaceHome({ username }: { username: string }) {
     setMode("image-to-image");
     setPrompt(item.prompt);
     applyGeometryFromParameters(item.parameters, item.modelId);
-    const matchingChannel =
-      channels.find(
-        (channel) =>
-          channel.name === item.channelName &&
-          channel.models.some(
-            (model) =>
-              model.id === item.modelId &&
-              model.capabilities.includes("image-to-image"),
-          ),
-      ) ??
-      channels.find((channel) =>
-        channel.models.some((model) =>
-          model.capabilities.includes("image-to-image"),
-        ),
-      );
-    if (matchingChannel) {
-      setChannelId(matchingChannel.id);
+    const matchingProvider =
+      providers.find((provider) => provider.name === item.channelName) ??
+      providers.find((provider) => provider.available);
+    if (matchingProvider) {
+      setProviderId(matchingProvider.id);
+      setChannelId(matchingProvider.id);
       const matchingModel = selectModelForCapability(
-        matchingChannel.models,
+        matchingProvider.models,
         item.modelId,
         "image-to-image",
       );
@@ -1126,21 +1101,20 @@ function WorkspaceHome({ username }: { username: string }) {
   function applyFeedItemToComposer(item: ArtworkFeedItem, notice?: string) {
     setError(undefined);
     setMessage(notice);
-    setMode(item.capability);
+    setMode(
+      item.capability === "image-to-image" ? "image-to-image" : "text-to-image",
+    );
     setPrompt(item.prompt);
     if (item.capability === "text-to-image" || notice) clearReferenceImage();
     applyGeometryFromParameters(item.parameters, item.modelId);
-    const matchingChannel = channels.find(
-      (channel) =>
-        channel.name === item.channelName &&
-        channel.models.some(
-          (model) =>
-            model.id === item.modelId &&
-            model.capabilities.includes(item.capability),
-        ),
+    const matchingProvider = providers.find(
+      (provider) =>
+        provider.name === item.channelName &&
+        provider.models.some((model) => model.id === item.modelId),
     );
-    if (matchingChannel) {
-      setChannelId(matchingChannel.id);
+    if (matchingProvider) {
+      setProviderId(matchingProvider.id);
+      setChannelId(matchingProvider.id);
       setModelId(item.modelId);
     }
   }
@@ -1170,7 +1144,7 @@ function WorkspaceHome({ username }: { username: string }) {
       return;
     }
     const notice =
-      item.capability === "image-to-text"
+      String(item.capability) === "image-to-text"
         ? "图生文记录需要重新上传参考图后再生成。"
         : "已从作品带入创作参数，可继续调整后再次生成。";
     applyFeedItemToComposer(item, notice);
@@ -1222,7 +1196,7 @@ function WorkspaceHome({ username }: { username: string }) {
           username={username}
         />
         <div className="status-strip">
-          <span>{channels.length} 个供应源</span>
+          <span>{availableProviders.length} 个生图通道</span>
           <span>{generating || runningTask ? "1 个任务运行中" : "待命"}</span>
         </div>
         {error ? <div className="error page-message">{error}</div> : null}
@@ -1260,7 +1234,7 @@ function WorkspaceHome({ username }: { username: string }) {
           {feedItems.length === 0 && !runningTask ? (
             <article className="empty-stage-card">
               <strong>等待第一束灵感</strong>
-              <p>在底部输入提示词，选择供应源、模型和尺寸后开始生成。</p>
+              <p>选择生图引擎，输入提示词后开始生成。</p>
             </article>
           ) : null}
           {feedItems.map((item) => {
@@ -1553,9 +1527,7 @@ function WorkspaceHome({ username }: { username: string }) {
             placeholder={
               composerSubmitMode === "text-to-image"
                 ? "描述画面中的物体、风格、构图和文字排版。"
-                : composerSubmitMode === "image-to-image"
-                  ? "描述如何基于参考图改写画面。"
-                  : "上传图片，写下要提取或分析的重点。"
+                : "描述如何基于参考图改写画面。"
             }
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
@@ -1567,9 +1539,7 @@ function WorkspaceHome({ username }: { username: string }) {
                 ? "生成中..."
                 : composerSubmitMode === "text-to-image"
                   ? "开始文生图"
-                  : composerSubmitMode === "image-to-image"
-                    ? "开始图生图"
-                    : "开始图生文"
+                  : "开始图生图"
             }
             className="send-orb"
             title={generating ? "生成中..." : "开始生成"}
@@ -1583,14 +1553,21 @@ function WorkspaceHome({ username }: { username: string }) {
         <div className="dock-toolbar">
           <label className="dock-control">
             <Zap size={16} aria-hidden="true" />
-            <span>供应源</span>
+            <span>引擎</span>
             <select
-              value={selectedChannel?.id ?? ""}
-              onChange={(event) => setChannelId(event.target.value)}
+              value={selectedProvider?.id ?? ""}
+              onChange={(event) => {
+                setProviderId(event.target.value);
+                setChannelId(event.target.value);
+              }}
             >
-              {modeChannels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name}
+              {providers.map((provider) => (
+                <option
+                  key={provider.id}
+                  value={provider.id}
+                  disabled={!provider.available}
+                >
+                  {provider.name}{provider.available ? "" : "（暂不可用）"}
                 </option>
               ))}
             </select>
@@ -1619,7 +1596,6 @@ function WorkspaceHome({ username }: { username: string }) {
             >
               <option value="text-to-image">文生图</option>
               <option value="image-to-image">图生图</option>
-              <option value="image-to-text">图生文</option>
             </select>
           </label>
           {composerSubmitMode === "text-to-image" ||
@@ -1699,470 +1675,6 @@ function WorkspaceHome({ username }: { username: string }) {
         </div>
       </form>
     </div>
-  );
-}
-
-function SettingsPage({ username }: { username: string }) {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [editingId, setEditingId] = useState("");
-  const [name, setName] = useState(TOGO_API_NAME);
-  const [baseUrl, setBaseUrl] = useState(TOGO_API_BASE_URL);
-  const [apiKey, setApiKey] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [models, setModels] = useState<ChannelModel[]>(togoApiDefaultModels);
-  const [message, setMessage] = useState<string>();
-  const [error, setError] = useState<string>();
-  const importInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    void refreshChannels();
-  }, []);
-
-  async function refreshChannels() {
-    const payload = await listChannels();
-    if (payload.ok) {
-      setChannels(payload.data.channels);
-    }
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError(undefined);
-    setMessage(undefined);
-    const modelsToSave = models.length > 0 ? models : [modelFromId(modelId)];
-    if (modelsToSave.some((model) => model.capabilities.length === 0)) {
-      setError("每个模型至少选择一种能力");
-      return;
-    }
-    const input: ChannelInput = {
-      name,
-      baseUrl,
-      apiKey,
-      models: modelsToSave,
-    };
-    const wasEditing = Boolean(editingId);
-    const payload = wasEditing
-      ? await updateChannel(editingId, input)
-      : await createChannel(input);
-    if (!payload.ok) {
-      setError(payload.error?.message ?? "保存失败");
-      return;
-    }
-    await refreshChannels();
-    resetChannelForm();
-    setMessage(wasEditing ? "供应源已更新" : "供应源已保存");
-  }
-
-  function editChannel(channel: Channel) {
-    setEditingId(channel.id);
-    setName(channel.name);
-    setBaseUrl(TOGO_API_BASE_URL);
-    setApiKey("");
-    setModelId(channel.models[0]?.id ?? "");
-    setModels(channel.models);
-    setMessage(undefined);
-    setError(undefined);
-  }
-
-  function addModel() {
-    const modelIds = parseModelIdList(modelId);
-    if (modelIds.length === 0) {
-      setError("请输入模型 ID");
-      return;
-    }
-    addModelEntries(modelIds.map((id) => modelFromId(id)));
-    setModelId("");
-  }
-
-  function addModelEntry(nextModel: ChannelModel) {
-    if (!nextModel.id) {
-      setError("请输入模型 ID");
-      return;
-    }
-    addModelEntries([nextModel]);
-  }
-
-  function togglePresetModel(preset: PresetModel) {
-    if (models.some((model) => model.id === preset.id)) {
-      removeModel(preset.id);
-      return;
-    }
-    addModelEntry(modelFromId(preset.id, preset.capabilities));
-  }
-
-  function addModelEntries(nextModels: ChannelModel[]) {
-    setModels((current) => {
-      const existing = new Set(current.map((model) => model.id));
-      const merged = [...current];
-      for (const nextModel of nextModels) {
-        if (!nextModel.id || existing.has(nextModel.id)) continue;
-        merged.push(nextModel);
-        existing.add(nextModel.id);
-      }
-      return merged;
-    });
-    setError(undefined);
-  }
-
-  function removeModel(id: string) {
-    setModels((current) => current.filter((model) => model.id !== id));
-  }
-
-  function toggleModelCapability(modelId: string, capability: Capability) {
-    setModels((current) =>
-      current.map((model) => {
-        if (model.id !== modelId) return model;
-        const hasCapability = model.capabilities.includes(capability);
-        return {
-          ...model,
-          capabilities: hasCapability
-            ? model.capabilities.filter((item) => item !== capability)
-            : [...model.capabilities, capability],
-        };
-      }),
-    );
-  }
-
-  async function removeChannel(channel: Channel) {
-    setError(undefined);
-    setMessage(undefined);
-    const payload = await deleteChannel(channel.id);
-    if (!payload.ok) {
-      setError(payload.error?.message ?? "删除失败");
-      return;
-    }
-    if (editingId === channel.id) resetChannelForm();
-    await refreshChannels();
-    setMessage("供应源已删除");
-  }
-
-  function exportChannels() {
-    setError(undefined);
-    const exportDocument = {
-      schemaVersion: 1,
-      channels: channels.map((channel) => ({
-        name: channel.name,
-        baseUrl: channel.baseUrl,
-        models: channel.models.map((model) => ({
-          id: model.id,
-          capabilities: model.capabilities,
-        })),
-      })),
-    };
-    const blob = new Blob([JSON.stringify(exportDocument, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "imgtool-model-sources.json";
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setMessage("供应源配置已导出，不包含 API Key。");
-  }
-
-  async function importChannels(file?: File) {
-    if (!file) return;
-    setError(undefined);
-    setMessage(undefined);
-    try {
-      const importedChannels = parseImportedChannels(
-        JSON.parse(await file.text()),
-      );
-      if (importedChannels.length === 0) {
-        setError("导入文件中没有可用供应源");
-        return;
-      }
-      let importedCount = 0;
-      for (const channel of importedChannels) {
-        const payload = await createChannel({ ...channel, apiKey: "" });
-        if (!payload.ok) {
-          setError(payload.error?.message ?? "供应源导入失败");
-          break;
-        }
-        importedCount += 1;
-      }
-      await refreshChannels();
-      if (importedCount > 0) {
-        setMessage(
-          `已导入 ${importedCount} 个供应源，请编辑补充 API Key 后再生成。`,
-        );
-      }
-    } catch {
-      setError("导入文件格式无效");
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = "";
-    }
-  }
-
-  function resetChannelForm() {
-    setEditingId("");
-    setName(TOGO_API_NAME);
-    setBaseUrl(TOGO_API_BASE_URL);
-    setApiKey("");
-    setModelId("");
-    setModels(togoApiDefaultModels());
-  }
-
-  const configuredModelCount = channels.reduce(
-    (total, channel) => total + channel.models.length,
-    0,
-  );
-  const selectedModelSummary =
-    models.length > 0
-      ? `${models.length} 个模型已加入`
-      : "可手动输入或点选预设";
-
-  return (
-    <>
-      <PageHeader eyebrow="MODEL ROUTER" title="模型设置" username={username} />
-      {message ? <div className="success">{message}</div> : null}
-      {error ? <div className="error">{error}</div> : null}
-      <section className="settings-console">
-        <div className="settings-command-bar" aria-label="供应源配置导入导出">
-          <div className="settings-summary">
-            <strong>{channels.length} 个供应源</strong>
-            <span>{configuredModelCount} 个模型路由</span>
-            <span>{selectedModelSummary}</span>
-          </div>
-          <div className="settings-command-actions">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={exportChannels}
-              disabled={channels.length === 0}
-            >
-              <Download size={16} aria-hidden="true" />
-              导出供应源
-            </button>
-            <label className="secondary-button import-button">
-              <Upload size={16} aria-hidden="true" />
-              导入供应源
-              <input
-                ref={importInputRef}
-                aria-label="导入供应源配置"
-                type="file"
-                accept="application/json"
-                onChange={(event) =>
-                  void importChannels(event.target.files?.[0])
-                }
-              />
-            </label>
-          </div>
-          <span className="settings-security-note">
-            导入导出不包含 API Key。
-          </span>
-        </div>
-        <div className="settings-grid">
-          <form className="settings-editor" onSubmit={submit}>
-            <section className="settings-card source-card">
-              <div className="settings-card-header">
-                <div>
-                  <h2>供应源档案</h2>
-                  <p>
-                    {editingId
-                      ? "正在编辑已保存的供应源"
-                      : "新增一个模型供应源"}
-                  </p>
-                </div>
-                <span>{editingId ? "编辑中" : "新建"}</span>
-              </div>
-              <div className="settings-field-grid">
-                <label>
-                  供应源名称
-                  <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Base URL
-                  <input value={baseUrl} readOnly aria-readonly="true" />
-                </label>
-                <label className="settings-field-wide">
-                  API Key
-                  <input
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    type="password"
-                  />
-                </label>
-              </div>
-            </section>
-            <section className="settings-card model-card">
-              <div className="settings-card-header">
-                <div>
-                  <h2>模型配置</h2>
-                  <p>输入多个模型 ID 可用空格、逗号或分号分隔。</p>
-                </div>
-                <span>{models.length} 已选</span>
-              </div>
-              <div className="model-entry-row">
-                <label>
-                  模型 ID
-                  <input
-                    value={modelId}
-                    onChange={(event) => setModelId(event.target.value)}
-                  />
-                </label>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={addModel}
-                >
-                  加入模型
-                </button>
-              </div>
-              <div className="preset-model-groups" aria-label="常用模型">
-                {PRESET_MODEL_GROUPS.map((group) => (
-                  <section className="preset-model-group" key={group.vendor}>
-                    <div className="preset-model-group-header">
-                      <h3>{group.vendor}</h3>
-                      <span>{group.models.length} 个预设</span>
-                    </div>
-                    <div className="preset-model-grid">
-                      {group.models.map((preset) => {
-                        const selected = models.some(
-                          (model) => model.id === preset.id,
-                        );
-                        return (
-                          <button
-                            aria-label={preset.label}
-                            aria-pressed={selected}
-                            className={`preset-model-card${selected ? " selected" : ""}`}
-                            key={preset.id}
-                            type="button"
-                            onClick={() => togglePresetModel(preset)}
-                          >
-                            <strong>{preset.label}</strong>
-                            <small>{preset.id}</small>
-                            <div
-                              className="preset-capability-row"
-                              aria-label={`${preset.label} 默认能力`}
-                            >
-                              {preset.capabilities.map((capability) => (
-                                <span
-                                  className="preset-capability-badge"
-                                  key={capability}
-                                >
-                                  {capabilityLabel(capability)}
-                                </span>
-                              ))}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ))}
-              </div>
-              <div className="selected-models">
-                {models.length === 0 ? (
-                  <p className="muted">
-                    还没有加入模型，保存时会使用上面的模型 ID。
-                  </p>
-                ) : (
-                  models.map((model) => (
-                    <div className="selected-model-chip" key={model.id}>
-                      <strong>{model.id}</strong>
-                      <div className="model-capability-list">
-                        {MODEL_CAPABILITIES.map((capability) => (
-                          <label key={capability}>
-                            <input
-                              aria-label={`${model.id} ${capabilityLabel(capability)}`}
-                              checked={model.capabilities.includes(capability)}
-                              type="checkbox"
-                              onChange={() =>
-                                toggleModelCapability(model.id, capability)
-                              }
-                            />
-                            {capabilityLabel(capability)}
-                          </label>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeModel(model.id)}
-                        title="移除模型"
-                      >
-                        移除
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="settings-form-actions">
-                <button type="submit">
-                  {editingId ? "保存修改" : "保存供应源"}
-                </button>
-                {editingId ? (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={resetChannelForm}
-                  >
-                    取消编辑
-                  </button>
-                ) : null}
-              </div>
-            </section>
-          </form>
-          <section className="settings-card configured-card">
-            <div className="settings-card-header">
-              <div>
-                <h2>已配置供应源</h2>
-                <p>管理可用于创作台的供应源和模型路由。</p>
-              </div>
-              <span>{channels.length}</span>
-            </div>
-            <div className="channel-list">
-              {channels.length === 0 ? (
-                <p className="muted">还没有供应源。</p>
-              ) : (
-                channels.map((channel) => (
-                  <article className="channel-item" key={channel.id}>
-                    <div className="channel-item-main">
-                      <strong>{channel.name}</strong>
-                      <p>{channel.baseUrl}</p>
-                    </div>
-                    <span
-                      className={
-                        channel.hasApiKey
-                          ? "key-state saved"
-                          : "key-state missing"
-                      }
-                    >
-                      {channel.hasApiKey ? "密钥已保存" : "未配置密钥"}
-                    </span>
-                    <div className="pill-row">
-                      {channel.models.map((model) => (
-                        <span className="pill" key={model.id}>
-                          {model.id}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="button-row">
-                      <button
-                        type="button"
-                        onClick={() => editChannel(channel)}
-                      >
-                        编辑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void removeChannel(channel)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
-      </section>
-    </>
   );
 }
 
@@ -2442,7 +1954,7 @@ function HistoryPage({ username }: { username: string }) {
 
   function regenerateRecord(record: HistoryRecord) {
     const notice =
-      record.capability === "image-to-text"
+      String(record.capability) === "image-to-text"
         ? "图生文记录需要重新上传参考图后再生成。"
         : record.capability === "image-to-image" &&
             (firstReferenceImageFile(record.files) ??
@@ -3141,47 +2653,6 @@ function HistoryPage({ username }: { username: string }) {
   );
 }
 
-function parseImportedChannels(value: unknown): ChannelInput[] {
-  if (!isRecord(value) || !Array.isArray(value.channels)) return [];
-  return value.channels
-    .map((item): ChannelInput | undefined => {
-      if (!isRecord(item)) return undefined;
-      const name = typeof item.name === "string" ? item.name.trim() : "";
-      const baseUrl =
-        typeof item.baseUrl === "string" ? item.baseUrl.trim() : "";
-      const models = Array.isArray(item.models)
-        ? parseImportedModels(item.models)
-        : [];
-      if (!name || !baseUrl || models.length === 0) return undefined;
-      return { name, baseUrl, apiKey: "", models };
-    })
-    .filter((item): item is ChannelInput => Boolean(item));
-}
-
-function parseImportedModels(value: unknown[]): ChannelModel[] {
-  return value
-    .map((item): ChannelModel | undefined => {
-      if (!isRecord(item)) return undefined;
-      const id = typeof item.id === "string" ? item.id.trim() : "";
-      if (!id) return undefined;
-      const capabilities = Array.isArray(item.capabilities)
-        ? item.capabilities.filter((capability): capability is Capability =>
-            MODEL_CAPABILITIES.includes(capability as Capability),
-          )
-        : [];
-      return {
-        id,
-        capabilities:
-          capabilities.length > 0 ? capabilities : modelFromId(id).capabilities,
-      };
-    })
-    .filter((item): item is ChannelModel => Boolean(item));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function AdminUsersPage({ username }: { username: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [newUsername, setNewUsername] = useState("");
@@ -3253,7 +2724,7 @@ function AdminUsersPage({ username }: { username: string }) {
       <PageHeader eyebrow="ADMIN" title="用户管理" username={username} />
       {message ? <div className="success">{message}</div> : null}
       {error ? <div className="error">{error}</div> : null}
-      <div className="settings-grid">
+      <div className="admin-grid">
         <form className="panel" onSubmit={submit}>
           <h2>创建用户</h2>
           <label>

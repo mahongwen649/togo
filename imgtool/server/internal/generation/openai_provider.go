@@ -25,65 +25,6 @@ type OpenAIProvider struct {
 	InternalBaseURL string
 }
 
-func (p OpenAIProvider) GenerateText(snapshot channels.Snapshot, request TextRequest) (string, error) {
-	client := p.Client
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Minute}
-	}
-	endpoint, err := url.JoinPath(ensureTrailingSlash(p.requestBaseURL(snapshot)), "v1/chat/completions")
-	if err != nil {
-		return "", err
-	}
-	body := map[string]any{
-		"model": snapshot.ModelID,
-		"messages": []map[string]any{
-			{
-				"role": "user",
-				"content": []map[string]any{
-					{"type": "text", "text": request.Prompt},
-					{
-						"type": "image_url",
-						"image_url": map[string]any{
-							"url": dataURL(request.MimeType, request.Image),
-						},
-					},
-				},
-			},
-		},
-	}
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return "", err
-	}
-	httpRequest, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	httpRequest.Header.Set("Authorization", "Bearer "+snapshot.APIKey)
-	httpRequest.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(httpRequest)
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	responseBytes, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024))
-	if err != nil {
-		return "", err
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", fmt.Errorf("upstream error %d: %s", response.StatusCode, redact(responseBytes, snapshot.APIKey))
-	}
-	var decoded any
-	if err := json.Unmarshal(responseBytes, &decoded); err != nil {
-		return "", err
-	}
-	text := extractText(decoded)
-	if strings.TrimSpace(text) == "" {
-		return "", errors.New("unsupported text response")
-	}
-	return text, nil
-}
-
 func (p OpenAIProvider) GenerateImage(snapshot channels.Snapshot, request ImageRequest) ([]ImageResult, error) {
 	client := p.Client
 	if client == nil {
@@ -656,54 +597,6 @@ func redact(bytes []byte, secrets ...string) string {
 	}
 	return message
 }
-
-func extractText(value any) string {
-	parts := []string{}
-	collectText(value, &parts)
-	return strings.TrimSpace(strings.Join(parts, "\n"))
-}
-
-func collectText(value any, parts *[]string) {
-	switch typed := value.(type) {
-	case map[string]any:
-		if choices, ok := typed["choices"].([]any); ok {
-			for _, choice := range choices {
-				collectText(choice, parts)
-			}
-		}
-		if candidates, ok := typed["candidates"].([]any); ok {
-			for _, candidate := range candidates {
-				collectText(candidate, parts)
-			}
-		}
-		if message, ok := typed["message"].(map[string]any); ok {
-			collectText(message["content"], parts)
-		}
-		if content, ok := typed["content"].(map[string]any); ok {
-			collectText(content["parts"], parts)
-		}
-		appendText(typed["text"], parts)
-		appendText(typed["output_text"], parts)
-	case []any:
-		for _, item := range typed {
-			collectText(item, parts)
-		}
-	case string:
-		appendText(typed, parts)
-	}
-}
-
-func appendText(value any, parts *[]string) {
-	text, ok := value.(string)
-	if !ok {
-		return
-	}
-	text = strings.TrimSpace(text)
-	if text != "" {
-		*parts = append(*parts, text)
-	}
-}
-
 
 func isGrokImagineModel(modelID string) bool {
 	normalized := normalizeGrokModelID(modelID)

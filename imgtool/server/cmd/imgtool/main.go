@@ -16,6 +16,7 @@ import (
 	"imgtool/server/internal/generation"
 	"imgtool/server/internal/history"
 	"imgtool/server/internal/httpapi"
+	"imgtool/server/internal/providers"
 	"imgtool/server/internal/retention"
 	"imgtool/server/internal/secure"
 	"imgtool/server/internal/storage"
@@ -51,8 +52,16 @@ func main() {
 		log.Fatal(err)
 	}
 	generationService := generation.NewService(channelService, historyService, generation.OpenAIProvider{
-		InternalBaseURL: os.Getenv("IMGTOOL_INTERNAL_CORE_BASE_URL"),
+		InternalBaseURL: firstNonEmpty(cfg.CoreBaseURL, os.Getenv("IMGTOOL_INTERNAL_CORE_BASE_URL")),
 	}, imageStorage)
+	providerService := providers.NewService(providers.Options{
+		PortalBaseURL: cfg.PortalBaseURL,
+		SSOSecret:     cfg.SSOSecret,
+		CoreBaseURL:   cfg.CoreBaseURL,
+		OpenAIGroupID: cfg.OpenAIGroupID,
+		GrokGroupID:   cfg.GrokGroupID,
+	})
+	generationService.WithResolver(providerService)
 	retention.Cleaner{
 		History:   historyService,
 		Deleter:   fileDeleter,
@@ -69,6 +78,7 @@ func main() {
 		FileDeleter:   fileDeleter,
 		Generation:    generationService,
 		History:       historyService,
+		Providers:     providerService,
 		SecureCookies: cfg.Env == "production",
 		SSO: auth.SSOOptions{
 			Secret:   cfg.SSOSecret,

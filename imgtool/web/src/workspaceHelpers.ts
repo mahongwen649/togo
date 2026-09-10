@@ -1,7 +1,6 @@
 import type { Capability, HistoryRecord, ResultFile, Task } from "./api";
 import {
   generateImageEdit,
-  generateText,
   getSignedFileURL,
   listHistory,
 } from "./api";
@@ -22,21 +21,8 @@ import type {
 } from "./workspaceTypes";
 import { COMPOSER_PREFS_KEY_PREFIX, REUSE_HISTORY_KEY } from "./workspaceTypes";
 
-export async function submitImageToText(input: {
-  channelId: string;
-  modelId: string;
-  prompt: string;
-  image: File;
-}) {
-  const formData = new FormData();
-  formData.set("channelId", input.channelId);
-  formData.set("modelId", input.modelId);
-  formData.set("prompt", input.prompt);
-  formData.set("inputImage", input.image);
-  return generateText(formData);
-}
-
 export async function submitImageToImage(input: {
+  providerId: string;
   channelId: string;
   modelId: string;
   prompt: string;
@@ -46,6 +32,7 @@ export async function submitImageToImage(input: {
   image: File;
 }) {
   const formData = new FormData();
+  formData.set("providerId", input.providerId);
   formData.set("channelId", input.channelId);
   formData.set("modelId", input.modelId);
   formData.set("prompt", input.prompt);

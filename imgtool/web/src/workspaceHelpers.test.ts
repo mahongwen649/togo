@@ -6,7 +6,6 @@ import type { ArtworkFeedItem } from "./workspaceTypes";
 
 vi.mock("./api", () => ({
   generateImageEdit: vi.fn(),
-  generateText: vi.fn(),
   getSignedFileURL: vi.fn(),
   listHistory: vi.fn()
 }));

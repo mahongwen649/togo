@@ -39,6 +39,7 @@ type Server struct {
 	rechargeCampaign     rechargeCampaign
 	lottery              *lottery.Service
 	corePaymentDB        *sql.DB
+	imgtoolKeysMu        sync.Mutex
 }
 
 type AuthService interface {
@@ -144,6 +145,7 @@ func New(core coreclient.Adapter, auth AuthService, logger *slog.Logger, depende
 	mux.HandleFunc("GET /api/v1/announcements", s.coreUserAPI)
 	mux.HandleFunc("POST /api/v1/announcements/{announcementID}/read", s.coreUserAPI)
 	mux.HandleFunc("POST /api/v1/integrations/imgtool/sso-url", s.imgtoolURL)
+	mux.HandleFunc("POST /api/v1/integrations/imgtool/credentials", s.imgtoolCredentials)
 	mux.HandleFunc("GET /api/v1/usage", s.coreUserAPI)
 	mux.HandleFunc("GET /api/v1/usage/stats", s.coreUserAPI)
 	mux.HandleFunc("GET /api/v1/usage/dashboard/stats", s.coreUserAPI)
@@ -1088,6 +1090,7 @@ func (s *Server) imgtoolURL(w http.ResponseWriter, r *http.Request) {
 		s.writeCoreProxyError(w, r, err)
 		return
 	}
+	s.ensureImgtoolKeys(r.Context(), accessToken)
 	redirectURL, err := buildImgtoolSSORedirectURL(user)
 	if err != nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "IMGTOOL_UNAVAILABLE", "Image generation is not configured")
@@ -2705,7 +2708,7 @@ func allowedCoreUserAPI(r *http.Request) bool {
 		return r.Method == http.MethodGet
 	case "/api/v1/payment/orders", "/api/v1/payment/orders/verify":
 		return r.Method == http.MethodPost
-	case "/api/v1/integrations/imgtool/sso-url":
+	case "/api/v1/integrations/imgtool/sso-url", "/api/v1/integrations/imgtool/credentials":
 		return r.Method == http.MethodPost
 	case "/api/v1/usage", "/api/v1/usage/stats", "/api/v1/usage/dashboard/stats",
 		"/api/v1/usage/dashboard/trend", "/api/v1/usage/dashboard/models",
