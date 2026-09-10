@@ -1,0 +1,22 @@
+[Unit]
+Description=TogoAPI Imgtool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/imgtool
+EnvironmentFile=/opt/imgtool/.env
+ExecStart=/opt/imgtool/dist/imgtool-linux-amd64
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/imgtool/data
+
+[Install]
+WantedBy=multi-user.target

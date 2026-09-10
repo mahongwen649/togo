@@ -1,0 +1,21 @@
+services:
+  lottery-web:
+    image: togoapi-lottery:production
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: /lottery/
+    container_name: togoapi-lottery-web
+    restart: unless-stopped
+    environment:
+      PORTAL_API_UPSTREAM: http://portal-api:18081
+    ports:
+      - "127.0.0.1:18084:8080"
+    networks:
+      - portal-network
+
+networks:
+  portal-network:
+    external: true
+    name: ${PORTAL_DOCKER_NETWORK:-portal_default}

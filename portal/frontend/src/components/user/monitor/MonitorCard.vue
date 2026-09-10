@@ -1,0 +1,156 @@
+<template>
+  <button
+    type="button"
+    class="group relative min-h-[260px] w-full overflow-hidden rounded-2xl border p-4 text-left shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-card-hover dark:bg-dark-800/70"
+    :class="cardSurfaceClass"
+    @click="emit('click')"
+  >
+    <div class="absolute inset-x-0 top-0 h-1" :class="statusStripClass"></div>
+
+    <!-- Header: icon + name/model + status chip -->
+    <div class="relative flex items-start gap-3">
+      <span
+        class="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-white shadow-sm ring-1 ring-black/5 dark:bg-dark-900 dark:ring-white/10"
+        :class="providerTintClass"
+      >
+        <ProviderIcon :provider="item.provider" :size="20" />
+      </span>
+      <div class="flex-1 min-w-0">
+        <div class="text-base font-semibold truncate text-gray-900 dark:text-gray-100">
+          {{ item.name }}
+        </div>
+        <div class="mt-0.5 flex items-center gap-1.5 min-w-0">
+          <span
+            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0"
+            :class="providerBadgeClass(item.provider)"
+          >
+            {{ providerLabel(item.provider) }}
+          </span>
+          <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
+            {{ item.primary_model }}
+          </span>
+          <span
+            v-if="item.group_name"
+            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
+          >
+            {{ item.group_name }}
+          </span>
+        </div>
+      </div>
+      <span
+        class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
+        :class="statusBadgeClass(item.primary_status)"
+      >
+        {{ statusLabel(item.primary_status) }}
+      </span>
+    </div>
+
+    <!-- Metrics -->
+    <MonitorMetricPair
+      primary-icon="bolt"
+      :primary-label="t('monitorCommon.dialogLatency')"
+      :primary-value="formatLatency(item.primary_latency_ms)"
+      primary-unit="ms"
+      secondary-icon="globe"
+      :secondary-label="t('monitorCommon.endpointPing')"
+      :secondary-value="formatLatency(item.primary_ping_latency_ms)"
+      secondary-unit="ms"
+    />
+
+    <!-- Divider -->
+    <div class="mt-4 border-t border-white/80 dark:border-dark-700/60"></div>
+
+    <!-- Availability row -->
+    <MonitorAvailabilityRow
+      :window-label="availabilityLabel"
+      :value="availabilityValue"
+      :samples-label="extraModelsCountLabel"
+    />
+
+    <!-- Timeline -->
+    <MonitorTimeline
+      :buckets="item.timeline"
+      :countdown-seconds="countdownSeconds"
+    />
+  </button>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import type { UserMonitorView } from '@/api/channelMonitor'
+import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import ProviderIcon from './ProviderIcon.vue'
+import MonitorMetricPair from './MonitorMetricPair.vue'
+import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
+import MonitorTimeline from './MonitorTimeline.vue'
+import { STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+
+const PROVIDER_TINT: Record<string, string> = {
+  openai: 'text-emerald-600 dark:text-emerald-300',
+  anthropic: 'text-orange-600 dark:text-orange-300',
+  gemini: 'text-sky-600 dark:text-sky-300',
+  grok: 'text-zinc-700 dark:text-zinc-200',
+}
+
+const props = defineProps<{
+  item: UserMonitorView
+  window: '7d' | '15d' | '30d'
+  availabilityValue: number | null
+  countdownSeconds: number
+}>()
+
+const emit = defineEmits<{
+  (e: 'click'): void
+}>()
+
+const { t } = useI18n()
+const {
+  statusLabel,
+  statusBadgeClass,
+  providerLabel,
+  providerBadgeClass,
+  formatLatency,
+} = useChannelMonitorFormat()
+
+const providerTintClass = computed(() =>
+  PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
+)
+
+const cardSurfaceClass = computed(() => {
+  switch (props.item.primary_status) {
+    case 'failed':
+    case 'error':
+      return 'border-rose-200 bg-gradient-to-br from-white via-rose-50/70 to-slate-50 dark:border-rose-500/30 dark:from-dark-800 dark:via-rose-500/10 dark:to-dark-900'
+    case STATUS_OPERATIONAL:
+      return 'border-emerald-100 bg-gradient-to-br from-white via-emerald-50/55 to-cyan-50/45 hover:border-emerald-200 dark:border-emerald-500/20 dark:from-dark-800 dark:via-emerald-500/10 dark:to-cyan-500/10'
+    default:
+      return 'border-amber-200 bg-gradient-to-br from-white via-amber-50/70 to-slate-50 dark:border-amber-500/30 dark:from-dark-800 dark:via-amber-500/10 dark:to-dark-900'
+  }
+})
+
+const statusStripClass = computed(() => {
+  switch (props.item.primary_status) {
+    case 'failed':
+    case 'error':
+      return 'bg-rose-400'
+    case STATUS_OPERATIONAL:
+      return 'bg-emerald-400'
+    default:
+      return 'bg-amber-400'
+  }
+})
+
+const availabilityLabel = computed(() => {
+  const win = t(`channelStatus.windowTab.${props.window}`)
+  return `${t('monitorCommon.availabilityPrefix')} · ${win}`
+})
+
+const extraModelsCountLabel = computed(() => {
+  const count = props.item.extra_models?.length ?? 0
+  if (count === 0) return undefined
+  return t('monitorCommon.extraModelsCount', { n: count })
+})
+</script>
+
+

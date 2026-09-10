@@ -1,0 +1,31 @@
+.env
+.env.*
+!.env.example
+*.log
+.codex-dev-data/
+
+# Local scratch and historical packages
+output/
+*.tar.gz
+*.tgz
+*.zip
+
+# Nested upstream Sub2API checkout; it has its own git history
+/core/
+
+# Build and dependency artifacts
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+*.exe
+*.exe~
+*.test
+*.tsbuildinfo
+*.db
+*.db-shm
+*.db-wal
+
+# Editor / OS
+.DS_Store
+Thumbs.db

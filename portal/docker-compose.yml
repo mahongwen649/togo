@@ -1,0 +1,83 @@
+services:
+  portal-postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_USER: ${PORTAL_POSTGRES_USER:-portal}
+      POSTGRES_PASSWORD: ${PORTAL_POSTGRES_PASSWORD:?PORTAL_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${PORTAL_POSTGRES_DB:-portal}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - portal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PORTAL_POSTGRES_USER:-portal} -d ${PORTAL_POSTGRES_DB:-portal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  portal-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        GOLANG_IMAGE: ${PORTAL_GOLANG_IMAGE:-golang:1.23-alpine}
+        ALPINE_IMAGE: ${PORTAL_ALPINE_IMAGE:-alpine:3.21}
+    restart: unless-stopped
+    environment:
+      PORTAL_LISTEN_ADDR: 0.0.0.0:18081
+      CORE_BASE_URL: ${CORE_BASE_URL:-http://host.docker.internal:8080}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL:-}
+      CORE_ADMIN_API_KEY: ${CORE_ADMIN_API_KEY:?CORE_ADMIN_API_KEY is required}
+      PORTAL_PASSWORD_RESET_SECRET: ${PORTAL_PASSWORD_RESET_SECRET:-}
+      PORTAL_TURNSTILE_SECRET: ${PORTAL_TURNSTILE_SECRET:-}
+      PORTAL_TURNSTILE_SITE_KEY: ${PORTAL_TURNSTILE_SITE_KEY:-}
+      PORTAL_SMTP_HOST: ${PORTAL_SMTP_HOST:-}
+      PORTAL_SMTP_PORT: ${PORTAL_SMTP_PORT:-465}
+      PORTAL_SMTP_USERNAME: ${PORTAL_SMTP_USERNAME:-}
+      PORTAL_SMTP_PASSWORD: ${PORTAL_SMTP_PASSWORD:-}
+      PORTAL_SMTP_FROM: ${PORTAL_SMTP_FROM:-}
+      PORTAL_SMTP_FROM_NAME: ${PORTAL_SMTP_FROM_NAME:-TogoAPI}
+      PORTAL_SMTP_USE_TLS: ${PORTAL_SMTP_USE_TLS:-true}
+      PORTAL_BALANCE_ALERT_ENABLED: ${PORTAL_BALANCE_ALERT_ENABLED:-false}
+      PORTAL_BALANCE_ALERT_INTERVAL_SECONDS: ${PORTAL_BALANCE_ALERT_INTERVAL_SECONDS:-60}
+      IMGTOOL_BASE_URL: ${IMGTOOL_BASE_URL:-http://127.0.0.1:5173}
+      IMGTOOL_SSO_SECRET: ${IMGTOOL_SSO_SECRET:-}
+      PORTAL_DATABASE_URL: postgres://${PORTAL_POSTGRES_USER:-portal}:${PORTAL_POSTGRES_PASSWORD}@portal-postgres:5432/${PORTAL_POSTGRES_DB:-portal}?sslmode=disable
+      TZ: ${TZ:-Asia/Shanghai}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      portal-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:18081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  portal-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NODE_IMAGE: ${PORTAL_NODE_IMAGE:-node:22-alpine}
+        NGINX_IMAGE: ${PORTAL_NGINX_IMAGE:-nginx:1.27-alpine}
+        VITE_PUBLIC_API_BASE_URL: ${VITE_PUBLIC_API_BASE_URL:-}
+    restart: unless-stopped
+    ports:
+      - "${PORTAL_BIND_HOST:-127.0.0.1}:${PORTAL_PORT:-3000}:8080"
+    depends_on:
+      portal-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+volumes:
+  portal_postgres_data:

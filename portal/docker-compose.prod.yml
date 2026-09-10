@@ -1,0 +1,12 @@
+services:
+  portal-api:
+    environment:
+      TOGO_API_BASE_URL: http://sub2api:8080/v1
+    networks:
+      - default
+      - core-network
+
+networks:
+  core-network:
+    external: true
+    name: ${CORE_DOCKER_NETWORK:-sub2api_sub2api-network}

@@ -1,0 +1,42 @@
+declare module 'lucide-vue-next' {
+  import type { DefineComponent } from 'vue'
+  type IconComponent = DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
+  export const ArrowRight: IconComponent
+  export const Ban: IconComponent
+  export const Calculator: IconComponent
+  export const CalendarClock: IconComponent
+  export const CalendarDays: IconComponent
+  export const CalendarRange: IconComponent
+  export const ChartNoAxesColumnIncreasing: IconComponent
+  export const Check: IconComponent
+  export const ChevronDown: IconComponent
+  export const ChevronLeft: IconComponent
+  export const ChevronRight: IconComponent
+  export const CircleAlert: IconComponent
+  export const CircleCheckBig: IconComponent
+  export const Clock3: IconComponent
+  export const Copy: IconComponent
+  export const Download: IconComponent
+  export const ExternalLink: IconComponent
+  export const Eye: IconComponent
+  export const Gift: IconComponent
+  export const History: IconComponent
+  export const Info: IconComponent
+  export const LoaderCircle: IconComponent
+  export const LockKeyhole: IconComponent
+  export const LogOut: IconComponent
+  export const Mail: IconComponent
+  export const Pencil: IconComponent
+  export const Plus: IconComponent
+  export const Radio: IconComponent
+  export const ReceiptText: IconComponent
+  export const RefreshCw: IconComponent
+  export const Save: IconComponent
+  export const Search: IconComponent
+  export const ShieldCheck: IconComponent
+  export const Sparkles: IconComponent
+  export const TicketCheck: IconComponent
+  export const UsersRound: IconComponent
+  export const WalletCards: IconComponent
+  export const X: IconComponent
+}

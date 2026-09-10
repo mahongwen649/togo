@@ -1,0 +1,11 @@
+.git
+.gitignore
+backend/*.exe
+backend/*.exe~
+backend/*.test
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/*.tsbuildinfo
+.codex-dev-data
+*.log

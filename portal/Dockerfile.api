@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GOLANG_IMAGE=golang:1.23-alpine
+ARG ALPINE_IMAGE=alpine:3.21
+
+FROM ${GOLANG_IMAGE} AS builder
+
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /src
+
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+
+COPY backend/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/portal-api ./cmd/portal
+
+FROM ${ALPINE_IMAGE}
+
+RUN apk add --no-cache ca-certificates tzdata wget && \
+    addgroup -g 1000 portal && \
+    adduser -u 1000 -G portal -s /sbin/nologin -D portal
+
+WORKDIR /app
+COPY --from=builder --chown=portal:portal /out/portal-api /app/portal-api
+RUN chmod 755 /app/portal-api
+
+USER portal
+EXPOSE 18081
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q -T 3 -O /dev/null http://127.0.0.1:18081/health || exit 1
+
+ENTRYPOINT ["/app/portal-api"]

@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+oss.txt
+*.local
+node_modules/
+.next/
+dist/
+data/
+outputs/
+*.exe
+*.log
+_tmp_*.jpg
+*.csv
+.upload-chunks-*
+imgtool-linux-amd64*
+*.new

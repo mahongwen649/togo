@@ -1,0 +1,11 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": ["user-web/**/*.ts", "user-web/**/*.vue", "admin-web/**/*.ts", "admin-web/**/*.vue", "shared/**/*.ts", "shared/**/*.vue"],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"]
+    },
+    "types": ["vite/client"]
+  }
+}
