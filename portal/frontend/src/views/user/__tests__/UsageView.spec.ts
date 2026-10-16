@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
+import { exclusiveUsageAPI } from '@/api/exclusiveChannels'
 
 const {
   query,
@@ -127,8 +128,9 @@ const usageLog = {
   stream: false,
 }
 
-function mountUsageView() {
+function mountUsageView(props: { embedded?: boolean; scope?: 'exclusive' } = {}) {
   return mount(UsageView, {
+    props,
     global: {
       stubs: {
         AppLayout: simpleStub,
@@ -148,6 +150,22 @@ function mountUsageView() {
 }
 
 describe('user UsageView', () => {
+  it('loads embedded exclusive records through the shared usage UI without ordinary key filters', async () => {
+    const spies = [
+      vi.spyOn(exclusiveUsageAPI, 'query').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 }),
+      vi.spyOn(exclusiveUsageAPI, 'getStats').mockImplementation(getStats),
+      vi.spyOn(exclusiveUsageAPI, 'getDashboardModels').mockImplementation(getDashboardModels),
+      vi.spyOn(exclusiveUsageAPI, 'getDashboardSnapshotV2').mockImplementation(getDashboardSnapshotV2),
+    ]
+    const wrapper = mountUsageView({ embedded: true, scope: 'exclusive' })
+    await flushPromises()
+    spies.forEach(spy => expect(spy).toHaveBeenCalled())
+    expect(query).not.toHaveBeenCalled()
+    expect(list).not.toHaveBeenCalled()
+    expect(getAvailable).not.toHaveBeenCalled()
+    wrapper.unmount()
+    spies.forEach(spy => spy.mockRestore())
+  })
   beforeEach(() => {
     query.mockReset()
     getStats.mockReset()

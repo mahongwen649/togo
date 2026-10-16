@@ -78,6 +78,8 @@ export default {
     view: '查看',
     settings: '设置',
     chooseFile: '选择文件',
+    selectedFile: '已选：{name}',
+    noFileSelected: '未选择文件',
     copy: '复制',
     notAvailable: '不可用',
     now: '现在',

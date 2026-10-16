@@ -99,7 +99,7 @@ function simulateGuard(
       return canAccessAdminArea ? managementHomePath : '/dashboard'
     }
     if (authState.backendModeEnabled && !authState.isAuthenticated) {
-      const allowed = ['/login', '/key-usage', '/setup', '/legal', '/docs']
+      const allowed = ['/login', '/key-usage', '/setup', '/legal']
       const callbackPaths = [
         '/auth/callback',
         '/auth/linuxdo/callback',
@@ -163,7 +163,7 @@ function simulateGuard(
     if (authState.isAuthenticated && canAccessAdminArea) {
       return null
     }
-    const allowed = ['/login', '/key-usage', '/setup', '/legal', '/docs']
+    const allowed = ['/login', '/key-usage', '/setup', '/legal']
     const callbackPaths = [
       '/auth/callback',
       '/auth/linuxdo/callback',

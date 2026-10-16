@@ -29,3 +29,9 @@ coverage/
 # Editor / OS
 .DS_Store
 Thumbs.db
+
+# Independent standalone upstream checkout
+/newsub/
+# Local deployment captures, browser profiles, and validation output
+/artifacts/
+/portal/frontend/typecheck-out.txt

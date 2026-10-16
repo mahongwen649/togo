@@ -1,3 +1,4 @@
+import { isHiddenPortalPath } from '@/config/portalFeatures'
 /**
  * Vue Router configuration for Sub2API frontend
  * Defines all application routes with lazy loading and navigation guards
@@ -16,6 +17,11 @@ import { resolveDocumentTitle } from './title'
  * Route definitions with lazy loading
  */
 const routes: RouteRecordRaw[] = [
+  { path: '/admin/account-checks', name: 'AdminAccountChecks', component: () => import('@/views/admin/AccountChecksView.vue'), meta: { requiresAuth: true, requiresFullAdmin: true, title: '账号降智检查' } },
+  { path: '/exclusive-channels', name: 'ExclusiveChannels', component: () => import('@/views/user/ExclusiveChannelsView.vue'), meta: { requiresAuth: true, title: '独享通道' } },
+  { path: '/admin/exclusive-channels', name: 'ExclusiveChannelsAdmin', component: () => import('@/views/user/ExclusiveChannelsView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '独享通道管理' } },
+  { path: '/pelican-checks', name: 'PelicanChecks', component: () => import('@/views/admin/PelicanChecksView.vue'), meta: { requiresAuth: true, title: '鹈鹕绘图检查' } },
+  { path: '/admin/pelican-checks', name: 'AdminPelicanChecks', component: () => import('@/views/admin/PelicanChecksView.vue'), meta: { requiresAuth: true, requiresFullAdmin: true, title: '鹈鹕绘图检查' } },
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -152,17 +158,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/docs',
-    name: 'Docs',
-    component: () => import('@/views/user/DocsView.vue'),
-    meta: {
-      requiresAuth: false,
-      requiresAdmin: false,
-      title: 'Docs',
-      titleKey: 'nav.docs'
-    }
-  },
-  {
     path: '/models',
     name: 'ModelMarket',
     component: () => import('@/views/user/ModelMarketView.vue'),
@@ -219,6 +214,114 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'affiliate.title',
       descriptionKey: 'affiliate.description'
     }
+  },
+  {
+    path: '/account-business',
+    name: 'AccountBusiness',
+    redirect: '/account-business/home',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '账号套餐' }
+  },
+  {
+    path: '/account-business/home',
+    name: 'AccountBusinessHome',
+    component: () => import('@/views/user/AccountMarketView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '套餐首页' }
+  },
+  {
+    path: '/account-business/products',
+    name: 'AccountBusinessProducts',
+    redirect: '/account-business/home',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '套餐首页' }
+  },
+  {
+    path: '/account-business/usage',
+    name: 'AccountBusinessUsage',
+    component: () => import('@/views/user/UsageView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '使用记录' }
+  },
+  {
+    path: '/account-business/packages',
+    name: 'AccountBusinessPackages',
+    component: () => import('@/views/user/AccountPackageHomeView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '我的套餐' }
+  },
+  {
+    path: '/account-business/accounts',
+    name: 'AccountBusinessAccountsLegacy',
+    redirect: '/account-business/packages',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '我的套餐' }
+  },
+  {
+    path: '/account-business/orders',
+    name: 'AccountBusinessOrders',
+    component: () => import('@/views/user/AccountPackageOrdersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '我的订单' }
+  },
+  {
+    path: '/account-business/api-keys',
+    name: 'AccountBusinessApiKeys',
+    component: () => import('@/views/user/AccountPackageApiKeysView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '账号 API Key' }
+  },
+  {
+    path: '/account-business/balance',
+    name: 'AccountBusinessBalance',
+    redirect: '/account-business/balance/redeem',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '余额中心' }
+  },
+  {
+    path: '/card-shop',
+    name: 'CardShop',
+    redirect: '/recharge',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '余额充值' }
+  },
+  {
+    path: '/account-business/balance/purchase',
+    name: 'AccountBusinessBalancePurchase',
+    redirect: '/recharge',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '余额充值' }
+  },
+  {
+    path: '/account-business/balance/redeem',
+    name: 'AccountBusinessBalanceRedeem',
+    component: () => import('@/views/user/AccountBalanceRedeemView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '卡密兑换' }
+  },
+  {
+    path: '/account-business/balance/history',
+    name: 'AccountBusinessBalanceHistory',
+    component: () => import('@/views/user/AccountBalanceHistoryView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '充值记录' }
+  },
+  {
+    path: '/account-business/recharge',
+    name: 'AccountBusinessRecharge',
+    redirect: '/recharge',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '余额充值' }
+  },
+  {
+    path: '/account-business/redeem',
+    name: 'AccountBusinessRedeem',
+    redirect: '/account-business/balance/redeem',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '卡密兑换' }
+  },
+  {
+    path: '/account-business/recharge-history',
+    name: 'AccountBusinessRechargeHistory',
+    redirect: '/account-business/balance/history',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '充值记录' }
+  },
+  {
+    path: '/account-market',
+    name: 'AccountMarket',
+    redirect: '/account-business/products',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '账号商城' }
+  },
+  {
+    path: '/account-recharge',
+    name: 'AccountRecharge',
+    redirect: '/recharge',
+    meta: { requiresAuth: true, requiresAdmin: false, title: '账号充值' }
   },
   {
     path: '/recharge',
@@ -351,6 +454,48 @@ const routes: RouteRecordRaw[] = [
       title: '充值记录'
     }
   },
+  {
+    path: '/admin/account-business',
+    name: 'AdminAccountBusiness',
+    redirect: '/admin/account-business/products',
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '账号管理' }
+  },
+  {
+    path: '/admin/account-business/products',
+    name: 'AdminAccountBusinessProducts',
+    component: () => import('@/views/admin/AccountMarketAdminView.vue'),
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '商品配置' }
+  },
+  {
+    path: '/admin/account-business/orders',
+    name: 'AdminAccountBusinessOrders',
+    component: () => import('@/views/admin/AccountMarketAdminView.vue'),
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '订单处理' }
+  },
+  {
+    path: '/admin/account-business/redeem-codes',
+    name: 'AdminAccountBusinessRedeemCodes',
+    component: () => import('@/views/admin/AccountRedeemCodesAdminView.vue'),
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '卡密管理' }
+  },
+  {
+    path: '/admin/account-business/transactions',
+    name: 'AdminAccountBusinessTransactions',
+    component: () => import('@/views/admin/AccountFinanceAdminView.vue'),
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '充值与兑换记录' }
+  },
+  {
+    path: '/admin/account-business/users',
+    name: 'AdminAccountBusinessUsers',
+    component: () => import('@/views/admin/AccountUserLookupAdminView.vue'),
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '用户套餐查询' }
+  },
+  {
+    path: '/admin/account-market',
+    name: 'AdminAccountMarket',
+    component: () => import('@/views/admin/AccountMarketAdminView.vue'),
+    meta: { requiresAuth: true, requiresFullAdmin: true, title: '账号管理' }
+  },
   // ==================== 404 Not Found ====================
   {
     path: '/:pathMatch(.*)*',
@@ -367,7 +512,9 @@ const routes: RouteRecordRaw[] = [
  */
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes,
+  routes: routes.map(route => isHiddenPortalPath(route.path)
+    ? { path: route.path, name: route.name, redirect: route.path.startsWith('/admin/') ? '/admin/dashboard' : '/dashboard' }
+    : route),
   scrollBehavior(_to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
@@ -387,7 +534,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/home', '/login', '/key-usage', '/setup', '/legal', '/docs']
+const BACKEND_MODE_ALLOWED_PATHS = ['/home', '/login', '/key-usage', '/setup', '/legal']
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 const REMOVED_PORTAL_PATH_PREFIXES = [
   '/available-channels',

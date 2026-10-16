@@ -1,0 +1,6 @@
+# Applied by local.ps1 only when exclusive channels are enabled.
+# Trusted local operator access only; never expose this port to untrusted users.
+services:
+  sub2api:
+    ports: !override
+      - "127.0.0.1:8082:8080"

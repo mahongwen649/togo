@@ -42,6 +42,9 @@ importers:
       file-saver:
         specifier: ^2.0.5
         version: 2.0.5
+      katex:
+        specifier: ^0.16.45
+        version: 0.16.45
       marked:
         specifier: ^17.0.1
         version: 17.0.1

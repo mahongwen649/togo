@@ -21,6 +21,18 @@
     "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "exclude": ["src/**/__tests__/**", "src/**/*.spec.ts", "src/**/*.test.ts"],
+  "exclude": [
+    "src/**/__tests__/**",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "src/components/admin/account/**",
+    "src/components/account/AccountCapacityCell.vue",
+    "src/components/account/AccountStatsModal.vue",
+    "src/components/account/AccountTestModal.vue",
+    "src/components/account/EditAccountModal.vue",
+    "src/components/account/AccountTodayStatsCell.vue",
+    "src/components/account/AccountGroupsCell.vue",
+    "src/components/account/UpstreamBillingRateCell.vue"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -70,6 +70,33 @@ This fallback still uses the same Portal Compose project, database, ports, and C
 
 Open `http://127.0.0.1:3000`. Core accounts are used directly by Portal; Portal does not maintain a second password database. The initial administrator normally signs in with the email configured as `ADMIN_EMAIL`, not the word `admin`.
 
+## Exclusive Channel Mode
+
+When `portal/.env` sets `PORTAL_EXCLUSIVE_ENABLED=true`, `local.ps1` automatically
+applies the two exclusive-local Compose overrides under `portal/deploy`:
+
+- Core administration is available at `http://127.0.0.1:8082` for the trusted
+  local operator to sign in and add accounts. Portal still reaches the same
+  canonical Core at `http://sub2api:8080` over the existing Docker network.
+- Port 8082 is loopback-only but exposes Core directly, not an admin-only API
+  filter. Anyone with access to this machine can bypass Portal through it.
+  Do not forward it, bind it to a LAN/public interface, or use this local setup
+  for untrusted users. Production needs a separate authenticated private
+  administration connection and must not inherit this override.
+- Both loopback ports 3000 and 8080 terminate at Portal Web. The old Core relay
+  URL continues through Portal's guarded ordinary ingress; `/api/` uses Portal's
+  management allowlist. The direct Core UI is no longer a public entry point.
+- Keep the saved `CORE_BASE_URL=http://host.docker.internal:8080` setting for
+  ordinary mode. The exclusive override changes only the effective container
+  configuration, not the target Core instance.
+- Set `PORTAL_EXCLUSIVE_PUBLIC_URL=http://127.0.0.1:3000` and keep a stable,
+  private `PORTAL_EXCLUSIVE_SECRET` of at least 32 bytes in the ignored `.env`.
+- Use `local.ps1` for subsequent starts and restarts so Core is not accidentally
+  recreated with a publicly bound port. Do not disable this mode while leases exist.
+
+This local isolation setup does not change production. Production requires its
+own ingress and network verification before enabling exclusive channels.
+
 ## Rules
 
 - Use `local.ps1` for normal local work. Do not start ad-hoc containers for Portal or Core.

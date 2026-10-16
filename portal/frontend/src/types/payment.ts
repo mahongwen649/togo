@@ -35,6 +35,7 @@ export interface CreatePaymentOrderResult {
 }
 
 export interface PaymentOrder {
+  pay_url?: string
   id: number
   amount: number
   pay_amount: number

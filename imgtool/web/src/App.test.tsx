@@ -147,6 +147,34 @@ describe("App authentication and image workspace", () => {
     expect(screen.getByLabelText("引擎")).toHaveValue("grok");
   });
 
+  it.each([
+    ["openai", "gpt-image-2", "gpt-image-1"],
+    ["grok", "grok-imagine-image-2.0", "grok-imagine-image-1.0"],
+  ])("keeps and submits a manually selected model for %s", async (providerId, defaultModelId, modelId) => {
+    const fetchMock = installAuthenticatedFetch();
+    render(<App />);
+
+    await screen.findByDisplayValue("gpt-image-2");
+    await userEvent.selectOptions(screen.getByLabelText("引擎"), providerId);
+    await screen.findByDisplayValue(defaultModelId);
+    await userEvent.selectOptions(screen.getByLabelText("模型"), modelId);
+    expect(screen.getByLabelText("模型")).toHaveValue(modelId);
+
+    await userEvent.type(screen.getByLabelText("提示词"), "a red fox in a library");
+    expect(screen.getByLabelText("模型")).toHaveValue(modelId);
+    await userEvent.click(screen.getByRole("button", { name: "开始文生图" }));
+
+    await waitFor(() => {
+      const request = fetchMock.mock.calls.find(([input]) => input === "/api/generate/image");
+      expect(request).toBeDefined();
+      expect(JSON.parse(request![1]!.body as string)).toMatchObject({
+        providerId,
+        channelId: providerId,
+        modelId,
+      });
+    });
+  });
+
   it("submits a text-to-image request with the selected provider", async () => {
     const fetchMock = installAuthenticatedFetch();
     render(<App />);

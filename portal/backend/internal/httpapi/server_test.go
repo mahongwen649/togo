@@ -1230,6 +1230,30 @@ func TestDirectLoginCanProxyPortalUpstream(t *testing.T) {
 	}
 }
 
+func TestDatabaseLoginCanProxyPortalUpstream(t *testing.T) {
+	var received loginRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/auth/login" || r.Method != http.MethodPost {
+			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"code":"INVALID_CREDENTIALS","message":"Invalid account or password"}`)
+	}))
+	defer upstream.Close()
+	t.Setenv("PORTAL_AUTH_UPSTREAM_URL", upstream.URL)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"identifier":"admin","password":"wrong"}`))
+	New(coreStub{}, &authStub{}, testLogger()).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized || received.Identifier != "admin" || received.Password != "wrong" {
+		t.Fatalf("status=%d received=%+v body=%s", recorder.Code, received, recorder.Body.String())
+	}
+}
+
 func TestSendVerifyCodeProxiesAnonymousRequestToCore(t *testing.T) {
 	core := &verifyCodeCoreStub{response: coreclient.Response{
 		StatusCode: http.StatusOK, ContentType: "application/json", Body: []byte(`{"code":0,"data":{"countdown":60}}`),

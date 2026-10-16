@@ -87,3 +87,9 @@ func TestCOSBucketURLCanBeBuiltFromBucketAndRegion(t *testing.T) {
 		t.Fatalf("url = %q", got)
 	}
 }
+
+func TestCOSHTTPTimeoutIsTenMinutes(t *testing.T) {
+	if cosHTTPTimeout != 10*time.Minute {
+		t.Fatalf("cosHTTPTimeout = %s, want 10m", cosHTTPTimeout)
+	}
+}

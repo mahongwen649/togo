@@ -230,13 +230,6 @@ export default {
       orderNo: 'Order number', paidAmount: 'Paid', creditedAmount: 'Credited', createdAt: 'Created', orderStatus: 'Status',
       action: 'Action', empty: 'No recharge history', cancel: 'Cancel', refresh: 'Refresh', loadFailed: 'Failed to load payment information',
       campaignBonusRow: 'Recharge bonus credit', campaignBonusStatuses: { PENDING: 'Pending', APPLYING: 'Crediting', APPLIED: 'Credited', FAILED: 'Failed' },
-      invoiceApply: 'Request invoice', invoiceDialogTitle: 'Request invoice', invoiceRequirementTitle: 'Invoice requirements',
-      invoiceRequirement: 'Invoices are available when the recharge amount reaches ¥100.', invoiceWechatLabel: 'WeChat support',
-      invoiceContactHint: 'Add our support account and provide your account, order number, and invoice details for assistance.',
-      copyWechat: 'Copy WeChat ID', wechatCopied: 'WeChat ID copied', invoiceClose: 'Got it',
-      refundApply: 'Request refund', refundDialogTitle: 'Request refund', refundRequirementTitle: 'Refund support',
-      refundRequirement: 'Contact our WeChat support account to submit a refund request.',
-      refundContactHint: 'Add our support account and provide your account, order number, and reason for the refund.',
       statuses: { PENDING: 'Pending', PAID: 'Paid', RECHARGING: 'Crediting', COMPLETED: 'Completed', EXPIRED: 'Expired', CANCELLED: 'Cancelled', FAILED: 'Failed', REFUND_REQUESTED: 'Refund requested', REFUNDING: 'Refunding', REFUND_PENDING: 'Refund pending', PARTIALLY_REFUNDED: 'Partially refunded', REFUNDED: 'Refunded', REFUND_FAILED: 'Refund failed' }
     },
     title: 'Recharge / Subscription',

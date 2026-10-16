@@ -16,6 +16,10 @@ import financeAPI from './finance'
 import companiesAPI from './companies'
 import scopeAPI from './scope'
 import rechargesAPI from './recharges'
+import accountsAPI from './accounts'
+import scheduledTestsAPI from './scheduledTests'
+import grokAPI from './grok'
+import cnProvidersAPI from './cnProviders'
 
 /**
  * Unified admin API object for convenient access
@@ -33,7 +37,11 @@ export const adminAPI = {
   finance: financeAPI,
   companies: companiesAPI,
   scope: scopeAPI,
-  recharges: rechargesAPI
+  recharges: rechargesAPI,
+  accounts: accountsAPI,
+  scheduledTests: scheduledTestsAPI,
+  grok: grokAPI,
+  cnProviders: cnProvidersAPI
 }
 
 export {
@@ -49,7 +57,11 @@ export {
   financeAPI,
   companiesAPI,
   scopeAPI,
-  rechargesAPI
+  rechargesAPI,
+  accountsAPI,
+  scheduledTestsAPI,
+  grokAPI,
+  cnProvidersAPI
 }
 
 export default adminAPI

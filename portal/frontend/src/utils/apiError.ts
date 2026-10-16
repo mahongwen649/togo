@@ -51,7 +51,7 @@ type TranslateWithExistsFn = TranslateFn & { te?: (key: string) => boolean }
 
 /**
  * Translate a value via i18n if a matching key exists, otherwise return the original.
- * Example: "certSerial" → t('fields.certSerial') when available; otherwise "certSerial".
+ * Example: "certSerial" → t('fields.certSerial') → "证书序列号".
  */
 function tryTranslate(t: TranslateFn, key: string, fallback: string): string {
   const translated = t(key)
@@ -63,7 +63,7 @@ function tryTranslate(t: TranslateFn, key: string, fallback: string): string {
 
 /**
  * Replace raw config field names in metadata (e.g. "certSerial") with their
- * localized UI labels when a generic field-label i18n key exists.
+ * localized UI labels (e.g. "证书序列号"), using the shared field-label namespace.
  * Handles both single `key` and `/`-joined `keys` patterns used by wxpay errors.
  */
 function localizeMetadata(metadata: Record<string, unknown>, t: TranslateFn): Record<string, unknown> {

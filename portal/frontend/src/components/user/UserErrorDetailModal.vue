@@ -73,12 +73,15 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { getMyErrorDetail } from '@/api/usage'
+import { accountUsageAPI } from '@/api/accountBusiness'
 import { formatDateTime } from '@/utils/format'
 import type { UserErrorRequestDetail } from '@/types'
 
 const props = defineProps<{
+  loadDetail?: (id: number) => Promise<UserErrorRequestDetail>
   show: boolean
   errorId: number | null
 }>()
@@ -88,6 +91,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const route = useRoute()
 
 const loading = ref(false)
 const loadError = ref(false)
@@ -110,7 +114,9 @@ async function fetchDetail(id: number) {
   loadError.value = false
   detail.value = null
   try {
-    detail.value = await getMyErrorDetail(id)
+    detail.value = props.loadDetail ? await props.loadDetail(id) : route.path === '/account-business/usage'
+      ? await accountUsageAPI.getMyErrorDetail(id)
+      : await getMyErrorDetail(id)
   } catch (e) {
     console.error('[UserErrorDetailModal] Failed to load error detail:', e)
     loadError.value = true

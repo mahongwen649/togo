@@ -56,6 +56,33 @@ describe('AppSidebar header styles', () => {
   })
 })
 
+describe('AppSidebar account package navigation', () => {
+  it('does not show promotional tags in the sidebar', () => {
+    expect(componentSource).not.toContain('sidebar-new-badge')
+    expect(componentSource).not.toContain("badge: 'NEW'")
+    expect(componentSource).not.toContain("badge: '推荐'")
+  })
+
+  it('keeps the account package group collapsed until the user expands it', () => {
+    expect(componentSource).toContain("const autoExpandActiveGroup = item.path !== accountBusinessNavItem.path")
+    expect(componentSource).toContain('expandedGroups.value.has(item.path) || (autoExpandActiveGroup && isGroupActive(item))')
+  })
+})
+
+describe('AppSidebar account administration', () => {
+  it('exposes finance records and user package lookup', () => {
+    expect(componentSource).toContain("path: '/admin/account-business/transactions', label: '充值 / 兑换记录'")
+    expect(componentSource).toContain("path: '/admin/account-business/users', label: '用户套餐查询'")
+  })
+})
+
+describe('AppSidebar card shop entry', () => {
+  it('does not expose card purchasing in either personal menu', () => {
+    expect(componentSource).not.toContain("{ path: '/card-shop'")
+    expect(componentSource).not.toContain("{ path: '/account-business/balance/purchase', label: '购买卡密'")
+  })
+})
+
 describe('AppSidebar Portal entries', () => {
   it('links the gift campaign outside the Portal router', () => {
     expect(componentSource).toContain("path: 'gift:campaign', href: '/gift'")

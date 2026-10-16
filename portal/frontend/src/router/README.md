@@ -27,7 +27,6 @@ This directory contains the Vue Router configuration for the trimmed Portal fron
 | `/dashboard` | DashboardView | User dashboard with stats    |
 | `/keys`      | KeysView      | API key management           |
 | `/usage`     | UsageView     | Usage records and statistics |
-| `/docs`      | DocsView      | API usage guide              |
 | `/models`    | ModelMarketView | Available models and pricing |
 | `/redeem`    | RedeemView    | Redeem code interface        |
 | `/profile`   | ProfileView   | User profile settings        |

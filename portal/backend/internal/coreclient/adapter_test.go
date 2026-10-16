@@ -192,6 +192,34 @@ func TestUserAPIRequestPreservesPortalSourceForPaymentReturnValidation(t *testin
 	}
 }
 
+func TestUserAPIRequestUsesAdministratorJWTWithoutServerKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/admin/dashboard/snapshot-v2" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer administrator-token" {
+			t.Fatalf("authorization = %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "" {
+			t.Fatalf("x-api-key = %q, want empty when administrator JWT is present", got)
+		}
+		_, _ = w.Write([]byte(`{"code":0,"data":{}}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewHTTPAdapter(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter = adapter.WithAdminAPIKey("local-development-key")
+	response, err := adapter.UserAPIRequest(context.Background(), CoreRequest{
+		Method: http.MethodGet, Path: "/api/v1/admin/dashboard/snapshot-v2", AccessToken: "administrator-token",
+	})
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("response=%+v err=%v", response, err)
+	}
+}
+
 func TestUserAPIRequestKeepsHTTPSUpstreamHostForPublicCore(t *testing.T) {
 	var upstreamHost string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

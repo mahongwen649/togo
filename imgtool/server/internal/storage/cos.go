@@ -33,7 +33,7 @@ type COSStorage struct {
 }
 
 const (
-	cosHTTPTimeout = 2 * time.Minute
+	cosHTTPTimeout = 10 * time.Minute
 	cosPartSizeMB  = 1
 	cosWorkers     = 4
 )

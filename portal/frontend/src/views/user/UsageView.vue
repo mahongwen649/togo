@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <component :is="embedded ? 'div' : AppLayout">
     <div :class="isMobileH5 ? 'space-y-4' : 'space-y-6'">
       <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
 
@@ -205,21 +205,25 @@
         :page="errorPage"
         :page-size="errorPageSize"
         :visible-column-keys="errVisibleColumnKeys"
+        :load-detail="usageDataAPI.getMyErrorDetail"
         @sort="onErrorSort"
         @update:page="onErrorPage"
         @update:pageSize="onErrorPageSize"
         @ipGeoBatchFailed="handleIpGeoBatchFailed"
       />
     </div>
-  </AppLayout>
+  </component>
 
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { keysAPI, usageAPI, userGroupsAPI } from '@/api'
+import { accountUsageAPI } from '@/api/accountBusiness'
+import { exclusiveUsageAPI } from '@/api/exclusiveChannels'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
@@ -252,6 +256,7 @@ import type {
 import type { Column } from '@/components/common/types'
 import { COMMON_ERROR_STATUS_CODES } from '@/utils/errorBadges'
 
+const props = withDefaults(defineProps<{ embedded?: boolean; scope?: 'exclusive' }>(), { embedded: false })
 const { t } = useI18n()
 const {
   contentVisible: filterContentVisible,
@@ -259,6 +264,9 @@ const {
   toggleMobile: toggleFilters,
 } = useMobileCollapse()
 const appStore = useAppStore()
+const route = useRoute()
+const isAccountBusinessUsage = computed(() => route?.path === '/account-business/usage')
+const usageDataAPI = computed(() => props.scope === 'exclusive' ? exclusiveUsageAPI : isAccountBusinessUsage.value ? accountUsageAPI : usageAPI)
 
 type DistributionMetric = 'tokens' | 'actual_cost'
 type EndpointSource = 'inbound' | 'upstream' | 'path'
@@ -444,7 +452,7 @@ const loadLogs = async () => {
   abortController = controller
   loading.value = true
   try {
-    const res = await usageAPI.query(buildUsageListParams(pagination.page, pagination.page_size), {
+    const res = await usageDataAPI.value.query(buildUsageListParams(pagination.page, pagination.page_size), {
       signal: controller.signal,
     })
     if (!controller.signal.aborted) {
@@ -464,7 +472,7 @@ const loadStats = async () => {
   const seq = ++statsReqSeq
   endpointStatsLoading.value = true
   try {
-    const stats = await usageAPI.getStats(normalizedFilters.value)
+    const stats = await usageDataAPI.value.getStats(normalizedFilters.value)
     if (seq !== statsReqSeq) return
     usageStats.value = stats
     inboundEndpointStats.value = stats.endpoints || []
@@ -485,7 +493,7 @@ const loadModelStats = async () => {
   const seq = ++modelStatsReqSeq
   modelStatsLoading.value = true
   try {
-    const response = await usageAPI.getDashboardModels({
+    const response = await usageDataAPI.value.getDashboardModels({
       ...normalizedFilters.value,
       model_source: 'requested',
     })
@@ -505,7 +513,7 @@ const loadChartData = async () => {
   const seq = ++chartReqSeq
   chartsLoading.value = true
   try {
-    const snapshot = await usageAPI.getDashboardSnapshotV2({
+    const snapshot = await usageDataAPI.value.getDashboardSnapshotV2({
       ...normalizedFilters.value,
       granularity: granularity.value,
       include_trend: true,
@@ -640,7 +648,7 @@ const exportToCSV = async () => {
     const pageSize = 100
     const totalPages = Math.ceil(pagination.total / pageSize)
     for (let page = 1; page <= totalPages; page++) {
-      const response = await usageAPI.query(buildUsageListParams(page, pageSize))
+      const response = await usageDataAPI.value.query(buildUsageListParams(page, pageSize))
       allLogs.push(...response.items)
     }
     if (allLogs.length === 0) {
@@ -812,6 +820,13 @@ const handleColumnClickOutside = (event: MouseEvent) => {
 }
 
 const loadFilterOptions = async () => {
+  // 套餐使用记录由 accountUsageAPI 按当前用户有效套餐绑定的账号聚合，
+  // 不应再读取普通中转账户的 Key/分组筛选项，避免两套记录串在一起。
+  if (isAccountBusinessUsage.value || props.scope === 'exclusive') {
+    apiKeys.value = []
+    groups.value = []
+    return
+  }
   try {
     const [keys, availableGroups] = await Promise.all([
       keysAPI.list(1, 100),
@@ -837,7 +852,7 @@ const resetErrorRows = () => {
 const loadErrors = async () => {
   errorLoading.value = true
   try {
-    const resp = await usageAPI.listMyErrorRequests({
+    const resp = await usageDataAPI.value.listMyErrorRequests({
       page: errorPage.value,
       page_size: errorPageSize.value,
       start_date: startDate.value,
@@ -881,6 +896,8 @@ const switchToErrors = () => {
   activeTab.value = 'errors'
   if (errorRows.value.length === 0) void loadErrors()
 }
+
+defineExpose({ refresh: refreshData })
 
 onMounted(() => {
   loadSavedColumns()

@@ -1,16 +1,26 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-[950px] space-y-6">
+    <div class="mx-auto max-w-[1180px] space-y-6">
       <div class="page-header flex flex-wrap items-end justify-between gap-3">
-        <div><h1 class="page-title">{{ t('payment.portal.recharge') }}</h1><p class="page-description">{{ t('payment.portal.description') }}</p></div>
-        <RouterLink to="/orders" class="btn btn-secondary">{{ t('payment.portal.viewOrders') }}</RouterLink>
+        <div><h1 class="page-title">{{ t('payment.portal.recharge') }}</h1><p v-if="ACCOUNT_PACKAGES_ENABLED" class="page-description">中转余额与账号套餐余额独立，不可混用。</p></div>
       </div>
 
+      <div class="recharge-sections" :class="{ 'recharge-sections--dual': ACCOUNT_PACKAGES_ENABLED }">
+      <section aria-labelledby="relay-recharge-title" class="min-w-0">
+        <header class="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="relay-recharge-title" class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><Icon name="link" class="text-primary-600" />中转余额充值</h2>
+          <RouterLink to="/orders" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600"><Icon name="clock" size="sm" />充值记录</RouterLink>
+        </header>
+        <div class="my-6 border-y border-gray-100 py-5 dark:border-dark-700">
+          <p class="text-sm text-gray-500 dark:text-dark-400">当前中转余额</p>
+          <p class="mt-2 break-all text-3xl font-bold tabular-nums text-primary-700 dark:text-primary-300">¥{{ formatMoney(authStore.user?.balance || 0) }}</p>
+          <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">用于中转 API 调用，支付宝支付后到账。</p>
+        </div>
       <div v-if="loading" class="flex justify-center py-16"><LoadingSpinner /></div>
-      <div v-else-if="loadError || !checkout" class="card p-6 text-sm text-red-600 dark:text-red-400">{{ loadError || t('payment.portal.loadFailed') }}</div>
-      <div v-else-if="checkout.balance_disabled" class="card p-8 text-center text-gray-600 dark:text-dark-300">{{ t('payment.portal.disabled') }}</div>
-      <div v-else class="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <section class="card p-6">
+      <div v-else-if="loadError || !checkout" role="alert" class="py-6 text-sm text-red-600 dark:text-red-400">{{ loadError || t('payment.portal.loadFailed') }}</div>
+      <div v-else-if="checkout.balance_disabled" class="py-8 text-center text-gray-600 dark:text-dark-300">{{ t('payment.portal.disabled') }}</div>
+      <div v-else class="space-y-6">
+        <div>
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.portal.amount') }}</h2>
           <div class="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
             <button
@@ -41,8 +51,8 @@
               <span class="text-base font-bold">¥{{ preset.amount }}</span>
             </button>
           </div>
-          <label class="mt-5 block text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('payment.portal.customAmount') }}</label>
-          <div class="relative mt-2"><span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span><input v-model.number="amount" type="number" :min="minAmount" :max="maxAmount || undefined" step="1" class="input w-full pl-8" /></div>
+          <label for="relay-recharge-amount" class="mt-5 block text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('payment.portal.customAmount') }}</label>
+          <div class="relative mt-2"><span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span><input id="relay-recharge-amount" v-model.number="amount" type="number" :min="minAmount" :max="maxAmount || undefined" step="1" class="input w-full pl-8" /></div>
           <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('payment.portal.range', { min: formatMoney(minAmount), max: maxAmount ? formatMoney(maxAmount) : '∞' }) }}</p>
 
           <h2 class="mt-7 text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.portal.alipay') }}</h2>
@@ -50,28 +60,34 @@
             <img :src="alipayIcon" alt="Alipay" class="h-9 w-9" /><div class="min-w-0 flex-1"><p class="font-medium text-gray-900 dark:text-white">{{ t('payment.portal.alipay') }}</p><p v-if="!alipayAvailable" class="text-xs text-red-500">{{ t('payment.portal.unavailable') }}</p></div>
             <span v-if="alipayAvailable" class="h-4 w-4 rounded-full border-[5px] border-primary-500 bg-white"></span>
           </div>
-        </section>
+        </div>
 
-        <aside class="card h-fit p-6">
+        <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
           <dl class="space-y-4 text-sm">
+            <div class="flex justify-between gap-3"><dt class="text-gray-500 dark:text-dark-400">到账账户</dt><dd class="font-medium">中转余额</dd></div>
             <div class="flex justify-between"><dt class="text-gray-500 dark:text-dark-400">{{ t('payment.portal.rate') }}</dt><dd class="font-medium">¥1 = ¥{{ multiplierText }}</dd></div>
             <div class="flex justify-between"><dt class="text-gray-500 dark:text-dark-400">{{ t('payment.portal.fee') }}</dt><dd class="font-medium">¥{{ formatMoney(fee) }}</dd></div>
             <div class="border-t border-gray-100 pt-4 dark:border-dark-700"><dt class="text-gray-500 dark:text-dark-400">{{ t('payment.portal.receive') }}</dt><dd class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatMoney(receiveAmount) }}</dd></div>
           </dl>
           <button type="button" class="btn btn-primary mt-6 w-full" :disabled="submitting || !validAmount || !alipayAvailable" @click="startPayment">{{ submitting ? t('payment.portal.processing') : t('payment.portal.payNow') }}</button>
           <p v-if="notice" :class="['mt-3 text-center text-xs', noticeError ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400']">{{ notice }}</p>
-        </aside>
+        </div>
+      </div>
+      </section>
+      <AccountWalletRecharge v-if="ACCOUNT_PACKAGES_ENABLED" />
       </div>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
+import { ACCOUNT_PACKAGES_ENABLED } from '@/config/portalFeatures'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
+import AccountWalletRecharge from '@/components/account-business/AccountWalletRecharge.vue'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import { createPaymentOrder, getPaymentCheckoutInfo, getPaymentOrder } from '@/api/payment'
 import { useAuthStore } from '@/stores/auth'
@@ -102,7 +118,7 @@ const maxAmount = computed(() => alipayMethod.value?.single_max || checkout.valu
 const multiplier = computed(() => checkout.value?.balance_recharge_multiplier || 1)
 const multiplierText = computed(() => Number(multiplier.value).toFixed(2).replace(/\.00$/, ''))
 const feeRate = computed(() => alipayMethod.value?.fee_rate ?? checkout.value?.recharge_fee_rate ?? 0)
-const fee = computed(() => Math.max(0, Number(amount.value) || 0) * feeRate.value)
+const fee = computed(() => Math.ceil(Math.max(0, Number(amount.value) || 0) * feeRate.value - 1e-8) / 100)
 const campaignBonus = computed(() => presets.find((preset) => preset.amount === Number(amount.value))?.bonus || 0)
 const receiveAmount = computed(() => Math.max(0, Number(amount.value) || 0) * multiplier.value + campaignBonus.value)
 const validAmount = computed(() => Number(amount.value) >= minAmount.value && (!maxAmount.value || Number(amount.value) <= maxAmount.value))
@@ -139,6 +155,43 @@ onBeforeUnmount(() => { if (pollTimer) window.clearInterval(pollTimer) })
 </script>
 
 <style scoped>
+.recharge-sections {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  border-block: 1px solid rgb(229 231 235);
+  background: white;
+  padding: 1.5rem;
+}
+
+.recharge-sections--dual > :last-child {
+  border-top: 1px solid rgb(229 231 235);
+  padding-top: 2rem;
+}
+
+:global(.dark .recharge-sections) {
+  background: rgb(24 24 27);
+  border-color: rgb(63 63 70);
+}
+
+:global(.dark .recharge-sections--dual > :last-child) {
+  border-color: rgb(63 63 70);
+}
+
+@media (min-width: 1280px) {
+  .recharge-sections--dual {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    padding: 2rem;
+  }
+
+  .recharge-sections--dual > :last-child {
+    border-top: 0;
+    border-left: 1px solid rgb(229 231 235);
+    padding-top: 0;
+    padding-left: 2rem;
+  }
+}
+
 .campaign-badge {
   isolation: isolate;
   overflow: hidden;

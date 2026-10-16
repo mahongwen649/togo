@@ -14,6 +14,13 @@ $coreEnv = Join-Path $coreDir '.env'
 $portalCompose = Join-Path $portalDir 'docker-compose.yml'
 $portalArtifactsCompose = Join-Path $portalDir 'docker-compose.artifacts.yml'
 $portalEnv = Join-Path $portalDir '.env'
+$exclusiveLocal = (Test-Path -LiteralPath $portalEnv) -and [bool](Get-Content -LiteralPath $portalEnv | Where-Object { $_ -match '^PORTAL_EXCLUSIVE_ENABLED=(true|1)$' })
+$coreComposeFiles = @($coreCompose)
+$portalComposeFiles = @($portalCompose)
+if ($exclusiveLocal) {
+    $coreComposeFiles += Join-Path $portalDir 'deploy\core-exclusive-local.compose.yml'
+    $portalComposeFiles += Join-Path $portalDir 'deploy\portal-exclusive-local.compose.yml'
+}
 
 function Invoke-Compose {
     param(
@@ -79,11 +86,20 @@ function Assert-Configuration {
     }
 }
 
+function Wait-CoreHealthy {
+    if ($exclusiveLocal) {
+        Invoke-Compose $coreDir $coreComposeFiles $coreEnv @('up', '-d', '--wait', '--wait-timeout', '120', 'sub2api')
+    }
+    else {
+        Wait-HttpHealthy 'Core' 'http://127.0.0.1:8080/health'
+    }
+}
+
 function Show-Status {
     Write-Host "`nCore"
-    Invoke-Compose $coreDir @($coreCompose) $coreEnv @('ps')
+    Invoke-Compose $coreDir $coreComposeFiles $coreEnv @('ps')
     Write-Host "`nPortal"
-    Invoke-Compose $portalDir @($portalCompose) $portalEnv @('ps')
+    Invoke-Compose $portalDir $portalComposeFiles $portalEnv @('ps')
 }
 
 function Start-Portal {
@@ -103,31 +119,31 @@ function Start-Portal {
         if ($LASTEXITCODE -ne 0) {
             throw 'portal-portal-api:latest is missing; run a full Portal build first'
         }
-        Invoke-Compose $portalDir @($portalCompose, $portalArtifactsCompose) $portalEnv @('up', '-d', '--no-build')
+        Invoke-Compose $portalDir ($portalComposeFiles + @($portalArtifactsCompose)) $portalEnv @('up', '-d', '--no-build')
         return
     }
 
-    Invoke-Compose $portalDir @($portalCompose) $portalEnv @('up', '-d', '--build')
+    Invoke-Compose $portalDir $portalComposeFiles $portalEnv @('up', '-d', '--build')
 }
 
 Assert-Configuration
 
 switch ($Action) {
     'up' {
-        Invoke-Compose $coreDir @($coreCompose) $coreEnv @('up', '-d')
-        Wait-HttpHealthy 'Core' 'http://127.0.0.1:8080/health'
+        Invoke-Compose $coreDir $coreComposeFiles $coreEnv @('up', '-d')
+        Wait-CoreHealthy
         Start-Portal
         Wait-HttpHealthy 'Portal' 'http://127.0.0.1:3000/health'
         Show-Status
     }
     'down' {
-        Invoke-Compose $portalDir @($portalCompose, $portalArtifactsCompose) $portalEnv @('down')
-        Invoke-Compose $coreDir @($coreCompose) $coreEnv @('down')
+        Invoke-Compose $portalDir ($portalComposeFiles + @($portalArtifactsCompose)) $portalEnv @('down')
+        Invoke-Compose $coreDir $coreComposeFiles $coreEnv @('down')
     }
     'restart' {
-        Invoke-Compose $portalDir @($portalCompose, $portalArtifactsCompose) $portalEnv @('down')
-        Invoke-Compose $coreDir @($coreCompose) $coreEnv @('up', '-d')
-        Wait-HttpHealthy 'Core' 'http://127.0.0.1:8080/health'
+        Invoke-Compose $portalDir ($portalComposeFiles + @($portalArtifactsCompose)) $portalEnv @('down')
+        Invoke-Compose $coreDir $coreComposeFiles $coreEnv @('up', '-d')
+        Wait-CoreHealthy
         Start-Portal
         Wait-HttpHealthy 'Portal' 'http://127.0.0.1:3000/health'
         Show-Status
@@ -136,7 +152,7 @@ switch ($Action) {
         Show-Status
     }
     'logs' {
-        Invoke-Compose $portalDir @($portalCompose) $portalEnv @('logs', '--tail', '100', 'portal-api', 'portal-web')
-        Invoke-Compose $coreDir @($coreCompose) $coreEnv @('logs', '--tail', '100', 'sub2api')
+        Invoke-Compose $portalDir $portalComposeFiles $portalEnv @('logs', '--tail', '100', 'portal-api', 'portal-web')
+        Invoke-Compose $coreDir $coreComposeFiles $coreEnv @('logs', '--tail', '100', 'sub2api')
     }
 }

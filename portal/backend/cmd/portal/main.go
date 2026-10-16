@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	portalauth "github.com/jqcode/portal/backend/internal/auth"
@@ -23,6 +26,8 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	appContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	coreBaseURL := envOrDefault("CORE_BASE_URL", "http://127.0.0.1:18080")
 	listenAddress := envOrDefault("PORTAL_LISTEN_ADDR", "127.0.0.1:18081")
 
@@ -66,7 +71,8 @@ func main() {
 		companyService = company.New(db)
 		rechargeCampaign = rechargepromo.New(db, adapter.WithAdminAPIKey(adminAPIKey))
 		lotteryService = lottery.New(db, adapter.WithAdminAPIKey(adminAPIKey), adapter.WithAdminAPIKey(adminAPIKey), logger)
-		go lotteryService.RunWorker(context.Background(), time.Duration(envInt("PORTAL_LOTTERY_WORKER_INTERVAL_SECONDS", 15))*time.Second)
+		go lotteryService.RunWorker(appContext, time.Duration(envInt("PORTAL_LOTTERY_WORKER_INTERVAL_SECONDS", 15))*time.Second)
+		go httpapi.RunAccountRenewalWorker(appContext, db, adapter.WithAdminAPIKey(adminAPIKey), logger, time.Duration(envInt("PORTAL_ACCOUNT_RENEWAL_INTERVAL_SECONDS", 300))*time.Second)
 
 		balanceAlertEnabled := envBool("PORTAL_BALANCE_ALERT_ENABLED", false)
 		passwordResetEnabled := os.Getenv("PORTAL_PASSWORD_RESET_SECRET") != ""
@@ -112,7 +118,7 @@ func main() {
 				logger.Error("Portal balance alert initialization failed", "error", err)
 				os.Exit(1)
 			}
-			go monitor.Run(context.Background())
+			go monitor.Run(appContext)
 		} else {
 			logger.Warn("Portal balance alert monitor is not enabled")
 		}
@@ -131,18 +137,61 @@ func main() {
 		corePaymentDB = db
 	}
 
+	var providerID int64
+	if raw := os.Getenv("PORTAL_ACCOUNT_PAYMENT_PROVIDER_ID"); raw != "" {
+		var err error
+		providerID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || providerID < 0 {
+			logger.Error("invalid account payment provider ID")
+			os.Exit(1)
+		}
+	}
+	accountPayment := httpapi.AccountPaymentConfig{PublicURL: os.Getenv("PORTAL_PUBLIC_URL"), Secret: os.Getenv("PORTAL_ACCOUNT_PAYMENT_SECRET"), ProviderID: providerID}
+	go httpapi.RunAccountPaymentWorker(appContext, portalDB, logger, accountPayment)
+	exclusive := httpapi.ExclusiveConfig{Enabled: envBool("PORTAL_EXCLUSIVE_ENABLED", false), IngressIsolated: envBool("PORTAL_EXCLUSIVE_INGRESS_ISOLATED", false), PublicURL: os.Getenv("PORTAL_EXCLUSIVE_PUBLIC_URL"), Secret: os.Getenv("PORTAL_EXCLUSIVE_SECRET"), Context: appContext}
+	if err := exclusive.Validate(); err != nil || (exclusive.Enabled && portalDB == nil) {
+		logger.Error("invalid exclusive channel configuration", "error", err)
+		os.Exit(1)
+	}
+	pelicanRunner := httpapi.NewPelicanRunner(portalDB, adapter.WithAdminAPIKey(adminAPIKey), logger)
+	if portalDB != nil {
+		go pelicanRunner.Run(appContext)
+	}
 	server := &http.Server{
 		Addr:              listenAddress,
-		Handler:           httpapi.New(adapter.WithAdminAPIKey(adminAPIKey), authService, logger, companyService, usernameRegistry, passwordResetService, rechargeCampaign, lotteryService, corePaymentDB),
+		Handler:           httpapi.New(adapter.WithAdminAPIKey(adminAPIKey), authService, logger, companyService, usernameRegistry, passwordResetService, rechargeCampaign, lotteryService, corePaymentDB, httpapi.NewPortalDatabase(portalDB), accountPayment, exclusive, pelicanRunner),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 	logger.Info("Portal API listening", "address", listenAddress)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("Portal API stopped", "error", err)
-		os.Exit(1)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.ListenAndServe() }()
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Portal API stopped", "error", err)
+			os.Exit(1)
+		}
+	case <-appContext.Done():
+		shutdownTimeout := time.Duration(envInt("PORTAL_SHUTDOWN_TIMEOUT_SECONDS", 1200)) * time.Second
+		logger.Info("Portal API draining active requests", "timeout", shutdownTimeout)
+		shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		err := server.Shutdown(shutdownContext)
+		if drainErr := pelicanRunner.Shutdown(shutdownContext); drainErr != nil {
+			logger.Error("pelican shutdown drain timed out", "error", drainErr)
+		}
+		cancel()
+		if err != nil {
+			logger.Error("Portal API graceful shutdown timed out", "error", err)
+			os.Exit(1)
+		}
+		if err = <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Portal API stopped", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("Portal API shutdown complete")
 	}
 }
 

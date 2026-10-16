@@ -39,8 +39,21 @@ type Server struct {
 	rechargeCampaign     rechargeCampaign
 	lottery              *lottery.Service
 	corePaymentDB        *sql.DB
+	portalDB             *sql.DB
+	accountPayment       AccountPaymentConfig
 	imgtoolKeysMu        sync.Mutex
+	accountChecksMu      sync.Mutex
+	accountChecks        map[accountCheckRunKey]context.CancelFunc
+	exclusive            ExclusiveConfig
+	exclusiveAccounts    sync.Map
+	pelicanRunner        *PelicanRunner
 }
+
+// PortalDatabase marks the database that owns Portal-only business data.
+// It is intentionally separate from Core's payment database.
+type PortalDatabase struct{ DB *sql.DB }
+
+func NewPortalDatabase(db *sql.DB) PortalDatabase { return PortalDatabase{DB: db} }
 
 type AuthService interface {
 	Login(context.Context, portalauth.LoginInput) (coreclient.AuthResult, error)
@@ -87,11 +100,86 @@ func New(core coreclient.Adapter, auth AuthService, logger *slog.Logger, depende
 			s.lottery = value
 		case *sql.DB:
 			s.corePaymentDB = value
+		case PortalDatabase:
+			s.portalDB = value.DB
+		case AccountPaymentConfig:
+			s.accountPayment = value
+		case ExclusiveConfig:
+			s.exclusive = value
+		case *PelicanRunner:
+			s.pelicanRunner = value
 		}
 	}
 	mux := http.NewServeMux()
+	s.registerAccountChecks(mux)
+	s.registerExclusive(mux)
+	if s.exclusive.Enabled {
+		if err := s.exclusive.Validate(); err != nil || s.portalDB == nil {
+			panic("invalid exclusive channel configuration")
+		}
+		workerContext := s.exclusive.Context
+		if workerContext == nil {
+			workerContext = context.Background()
+		}
+		if !s.exclusive.DisableWorker {
+			go s.runExclusiveWorker(workerContext)
+		}
+	}
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /api/v1/settings/public", s.publicSettings)
+	mux.HandleFunc("GET /api/v1/account-market/recharge", s.accountMarketRecharge)
+	mux.HandleFunc("GET /api/v1/account-market/products", s.accountMarketProducts)
+	mux.HandleFunc("GET /api/v1/account-market/wallet", s.accountMarketWallet)
+	mux.HandleFunc("GET /api/v1/account-market/payments/checkout-info", s.accountPaymentCheckout)
+	mux.HandleFunc("POST /api/v1/account-market/payments/orders", s.accountPaymentCreate)
+	mux.HandleFunc("GET /api/v1/account-market/payments/orders", s.accountPaymentList)
+	mux.HandleFunc("GET /api/v1/account-market/payments/orders/{orderID}", s.accountPaymentGet)
+	mux.HandleFunc("POST /api/v1/account-market/payments/verify", s.accountPaymentVerify)
+	mux.HandleFunc("GET /api/v1/account-market/payments/webhook/easypay", s.accountPaymentWebhook)
+	mux.HandleFunc("POST /api/v1/account-market/payments/webhook/easypay", s.accountPaymentWebhook)
+	mux.HandleFunc("POST /api/v1/account-market/redeem-codes/redeem", s.accountMarketRedeemCode)
+	mux.HandleFunc("GET /api/v1/account-market/redeem-codes/history", s.accountMarketRedeemHistory)
+	mux.HandleFunc("GET /api/v1/account-market/orders", s.accountMarketOrders)
+	mux.HandleFunc("PUT /api/v1/account-market/orders/{orderID}/auto-renew", s.accountMarketSetAutoRenew)
+	mux.HandleFunc("GET /api/v1/account-market/packages", s.accountMarketPackages)
+	mux.HandleFunc("GET /api/v1/account-market/usage", s.accountMarketUsageRecords)
+	mux.HandleFunc("GET /api/v1/account-market/usage/stats", s.accountMarketUsageStats)
+	mux.HandleFunc("GET /api/v1/account-market/usage/dashboard/models", s.accountMarketUsageModels)
+	mux.HandleFunc("GET /api/v1/account-market/usage/dashboard/snapshot-v2", s.accountMarketUsageSnapshot)
+	mux.HandleFunc("GET /api/v1/account-market/usage/errors", s.accountMarketUsageErrors)
+	mux.HandleFunc("GET /api/v1/account-market/usage/errors/{errorID}", s.accountMarketUsageErrorDetail)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}", s.accountMarketAccount)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/{accountID}/recover", s.accountMarketRecoverAccount)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/models", s.accountMarketAccountModels)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/{accountID}/test", s.accountMarketTestAccount)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/usage", s.accountMarketAccountUsage)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/usage/batch", s.accountMarketBatchUsage)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/today-stats", s.accountMarketTodayStats)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/stats", s.accountMarketAccountStats)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/today-stats/batch", s.accountMarketBatchTodayStats)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/{accountID}/schedulable", s.accountMarketSetSchedulable)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/temp-unschedulable", s.accountMarketTempUnschedulable)
+	mux.HandleFunc("DELETE /api/v1/account-market/accounts/{accountID}/temp-unschedulable", s.accountMarketClearTempUnschedulable)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/scheduled-test-plans", s.accountMarketScheduledTestPlans)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/{accountID}/scheduled-test-plans", s.accountMarketScheduledTestPlans)
+	mux.HandleFunc("PUT /api/v1/account-market/accounts/{accountID}/scheduled-test-plans/{planID}", s.accountMarketScheduledTestPlan)
+	mux.HandleFunc("DELETE /api/v1/account-market/accounts/{accountID}/scheduled-test-plans/{planID}", s.accountMarketScheduledTestPlan)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/scheduled-test-plans/{planID}/results", s.accountMarketScheduledTestResults)
+	mux.HandleFunc("GET /api/v1/account-market/accounts/{accountID}/core-action/{action}", s.accountMarketCoreAction)
+	mux.HandleFunc("POST /api/v1/account-market/accounts/{accountID}/core-action/{action}", s.accountMarketCoreAction)
+	mux.HandleFunc("POST /api/v1/account-market/orders", s.accountMarketCreateOrder)
+	mux.HandleFunc("GET /api/v1/admin/account-market/products", s.accountMarketAdminProducts)
+	mux.HandleFunc("POST /api/v1/admin/account-market/products", s.accountMarketAdminSaveProduct)
+	mux.HandleFunc("DELETE /api/v1/admin/account-market/products/{productID}", s.accountMarketAdminDeleteProduct)
+	mux.HandleFunc("GET /api/v1/admin/account-market/orders", s.accountMarketAdminOrders)
+	mux.HandleFunc("PUT /api/v1/admin/account-market/orders/{orderID}", s.accountMarketAdminUpdateOrder)
+	mux.HandleFunc("GET /api/v1/admin/account-market/core-accounts", s.accountMarketCoreAccounts)
+	mux.HandleFunc("GET /api/v1/admin/account-market/redeem-codes", s.accountMarketAdminRedeemCodes)
+	mux.HandleFunc("POST /api/v1/admin/account-market/redeem-codes/generate", s.accountMarketAdminGenerateRedeemCodes)
+	mux.HandleFunc("POST /api/v1/admin/account-market/redeem-codes/{codeID}/disable", s.accountMarketAdminDisableRedeemCode)
+	mux.HandleFunc("GET /api/v1/admin/account-market/transactions", s.accountMarketAdminTransactions)
+	mux.HandleFunc("GET /api/v1/admin/account-market/users/{userID}/overview", s.accountMarketAdminUserOverview)
+	mux.HandleFunc("POST /api/v1/admin/account-market/users/{userID}/balance", s.accountMarketAdminCreditUserBalance)
 	mux.HandleFunc("POST /api/v1/auth/send-verify-code", s.sendVerifyCode)
 	mux.HandleFunc("POST /api/v1/auth/forgot-password", s.passwordReset)
 	mux.HandleFunc("POST /api/v1/auth/reset-password", s.passwordReset)
@@ -1031,9 +1119,17 @@ func (s *Server) coreUserAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "NOT_FOUND", "API route is not available")
 		return
 	}
+	if !s.protectExclusiveUserAPI(w, r, accessToken) {
+		return
+	}
 	response, err := s.callCoreUserAPI(r, accessToken, r.URL.RawQuery, nil)
 	if err != nil {
 		s.writeCoreProxyError(w, r, err)
+		return
+	}
+	response, err = s.filterExclusiveUserResponse(r.Context(), r.URL.Path, response)
+	if err != nil {
+		s.exclusiveError(w, err)
 		return
 	}
 	writeCoreResponse(w, response)
@@ -2900,6 +2996,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid login request")
 		return
 	}
+	if upstream := strings.TrimSpace(os.Getenv("PORTAL_AUTH_UPSTREAM_URL")); upstream != "" {
+		s.proxyPortalLogin(w, r, upstream, request)
+		return
+	}
 	result, err := s.auth.Login(r.Context(), portalauth.LoginInput{
 		Identifier: request.Identifier, Password: request.Password, TurnstileToken: request.TurnstileToken,
 	})
@@ -3067,7 +3167,7 @@ func writeCoreResponse(w http.ResponseWriter, response coreclient.Response) {
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(response.StatusCode)
-	_, _ = w.Write(response.Body)
+	_, _ = w.Write(redactExclusiveCredentials(response.Body))
 }
 
 func writeAPIError(w http.ResponseWriter, status int, code, message string) {
@@ -3075,7 +3175,12 @@ func writeAPIError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
+	body, err := json.Marshal(value)
+	if err != nil {
+		status = http.StatusInternalServerError
+		body = []byte(`{"code":"ENCODING_ERROR","message":"Response unavailable"}`)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	_, _ = w.Write(append(redactExclusiveCredentials(body), '\n'))
 }

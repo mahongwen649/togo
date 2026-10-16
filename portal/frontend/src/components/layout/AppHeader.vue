@@ -25,7 +25,7 @@
         </div>
       </div>
 
-      <!-- Right: Announcements + Model Market + Docs + Language + Balance + User Dropdown -->
+      <!-- Right: Announcements + Model Market + Language + Balance + User Dropdown -->
       <div class="flex min-w-0 items-center" :class="isMobileH5 ? 'gap-1' : 'gap-3'">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
@@ -36,41 +36,32 @@
           class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
         >
           <Icon name="grid" size="sm" />
-          <span v-if="!isMobileH5">{{ t('nav.modelMarket') }}</span>
-        </router-link>
-
-        <router-link
-          v-if="user"
-          to="/docs"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-        >
-          <Icon name="book" size="sm" />
-          <span v-if="!isMobileH5">{{ t('nav.docs') }}</span>
+          <span v-if="!isMobileH5" class="hidden xl:inline">{{ t('nav.modelMarket') }}</span>
         </router-link>
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
 
-        <!-- Balance Display -->
+        <!-- Wallet Balances -->
         <div
           v-if="user && !isMobileH5"
-          class="flex items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20"
+          class="flex items-center rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 shadow-sm dark:border-dark-600 dark:bg-dark-800"
+          aria-label="账户余额"
         >
-          <svg
-            class="h-4 w-4 text-primary-600 dark:text-primary-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-            />
-          </svg>
-          <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
-            ¥{{ user.balance?.toFixed(2) || '0.00' }}
+          <span class="flex items-center gap-1.5" data-wallet="relay">
+            <span class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"><Icon name="link" size="sm" :stroke-width="2" /></span>
+            <span class="leading-tight">
+              <span class="block text-[10px] text-gray-500 dark:text-dark-400">中转余额</span>
+              <span class="block whitespace-nowrap text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-300">¥{{ formatWalletBalance(user.balance) }}</span>
+            </span>
+          </span>
+          <span v-if="ACCOUNT_PACKAGES_ENABLED" class="mx-2 h-7 w-px bg-gray-200 dark:bg-dark-600" aria-hidden="true"></span>
+          <span v-if="ACCOUNT_PACKAGES_ENABLED" class="flex items-center gap-1.5" data-wallet="account">
+            <span class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400"><Icon name="grid" size="sm" :stroke-width="2" /></span>
+            <span class="leading-tight">
+              <span class="block text-[10px] text-gray-500 dark:text-dark-400">套餐余额</span>
+              <span class="block whitespace-nowrap text-xs font-bold tabular-nums text-sky-700 dark:text-sky-300">{{ formatAccountWalletBalance(accountWalletStore.balance) }}</span>
+            </span>
           </span>
         </div>
 
@@ -112,13 +103,17 @@
                 <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
               </div>
 
-              <!-- Balance (mobile only) -->
+              <!-- Wallet balances (mobile only) -->
               <div v-if="isMobileH5" class="border-b border-gray-100 px-4 py-2 dark:border-dark-700">
-                <div class="text-xs text-gray-500 dark:text-dark-400">
-                  {{ t('common.balance') }}
-                </div>
-                <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">
-                  ¥{{ user.balance?.toFixed(2) || '0.00' }}
+                <div class="grid gap-2" :class="ACCOUNT_PACKAGES_ENABLED ? 'grid-cols-2' : 'grid-cols-1'">
+                  <div class="flex items-center gap-2 rounded-md bg-emerald-50 p-2 dark:bg-emerald-900/20" data-wallet="relay">
+                    <Icon name="link" size="sm" class="flex-shrink-0 text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 dark:text-dark-400">中转余额</div><div class="whitespace-nowrap text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-300">¥{{ formatWalletBalance(user.balance) }}</div></div>
+                  </div>
+                  <div v-if="ACCOUNT_PACKAGES_ENABLED" class="flex items-center gap-2 rounded-md bg-sky-50 p-2 dark:bg-sky-900/20" data-wallet="account">
+                    <Icon name="grid" size="sm" class="flex-shrink-0 text-sky-600 dark:text-sky-400" :stroke-width="2" />
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 dark:text-dark-400">套餐余额</div><div class="whitespace-nowrap text-xs font-bold tabular-nums text-sky-700 dark:text-sky-300">{{ formatAccountWalletBalance(accountWalletStore.balance) }}</div></div>
+                  </div>
                 </div>
               </div>
 
@@ -220,14 +215,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ACCOUNT_PACKAGES_ENABLED } from '@/config/portalFeatures'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
+import { useAccountWalletStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { sanitizeUrl } from '@/utils/url'
 import { useDeviceMode } from '@/composables/useDeviceMode'
 
 const router = useRouter()
@@ -236,15 +231,30 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
+const accountWalletStore = useAccountWalletStore()
 const { isCompactNavigation, isMobileH5 } = useDeviceMode()
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
-const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
-void docUrl.value
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+
+const formatWalletBalance = (value: number | null | undefined) => Number(value || 0).toFixed(2)
+const formatAccountWalletBalance = (value: number | null) => value === null ? '--' : `¥${value.toFixed(2)}`
+
+watch(
+  () => user.value?.id,
+  (userID) => {
+    if (!ACCOUNT_PACKAGES_ENABLED) return
+    if (userID === null || userID === undefined) {
+      accountWalletStore.reset()
+      return
+    }
+    void accountWalletStore.load(userID)
+  },
+  { immediate: true },
+)
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {

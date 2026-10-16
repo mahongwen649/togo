@@ -240,13 +240,6 @@ export default {
       orderStatus: '状态', action: '操作', empty: '暂无充值记录', cancel: '取消订单', refresh: '刷新',
       campaignBonusRow: '充值赠送额度', campaignBonusStatuses: { PENDING: '待到账', APPLYING: '到账中', APPLIED: '已到账', FAILED: '到账失败' },
       loadFailed: '加载支付信息失败',
-      invoiceApply: '申请发票', invoiceDialogTitle: '申请发票', invoiceRequirementTitle: '开票说明',
-      invoiceRequirement: '充值金额满 ¥100 后可申请开具发票。', invoiceWechatLabel: '微信客服',
-      invoiceContactHint: '添加客服微信后，请提供充值账号、订单号和开票信息，客服会协助处理。',
-      copyWechat: '复制微信号', wechatCopied: '微信号已复制', invoiceClose: '我知道了',
-      refundApply: '申请退款', refundDialogTitle: '申请退款', refundRequirementTitle: '退款说明',
-      refundRequirement: '如需申请退款，请联系微信客服提交申请。',
-      refundContactHint: '添加客服微信后，请提供充值账号、订单号和退款原因，客服会协助处理。',
       statuses: { PENDING: '待支付', PAID: '已支付', RECHARGING: '到账中', COMPLETED: '已完成', EXPIRED: '已过期', CANCELLED: '已取消', FAILED: '失败', REFUND_REQUESTED: '退款申请中', REFUNDING: '退款中', REFUND_PENDING: '退款待确认', PARTIALLY_REFUNDED: '部分退款', REFUNDED: '已退款', REFUND_FAILED: '退款失败' }
     },
     title: '充值/订阅',

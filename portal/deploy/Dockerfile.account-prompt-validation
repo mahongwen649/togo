@@ -1,0 +1,7 @@
+FROM golang:1.27.0-alpine
+WORKDIR /src
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN go test ./... -timeout 120s && go test -c -o /tmp/account-prompt.test ./internal/coreclient
+ENTRYPOINT ["/tmp/account-prompt.test", "-test.run=^TestAccountPromptLive$", "-test.v", "-test.timeout=600s"]

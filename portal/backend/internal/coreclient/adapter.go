@@ -521,7 +521,11 @@ func (a *HTTPAdapter) rawRequestWithSourceAndHeaders(ctx context.Context, method
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 	}
-	if strings.HasPrefix(path, "/api/v1/admin/") {
+	// Browser-originated admin requests already carry the signed-in
+	// administrator JWT. Do not add the server key as well: Core gives the
+	// x-api-key header precedence, so a local/development key would turn an
+	// otherwise valid administrator session into INVALID_ADMIN_KEY.
+	if strings.HasPrefix(path, "/api/v1/admin/") && strings.TrimSpace(accessToken) == "" {
 		req.Header.Set("x-api-key", a.adminAPIKey)
 	}
 	for key, value := range headers {

@@ -67,6 +67,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { normalizePlanType, openAIPlanTypeLabel } from '@/utils/planType'
 import GrokFreeIcon from './GrokFreeIcon.vue'
 import PlatformIcon from './PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -120,12 +121,14 @@ const typeLabel = computed(() => {
   }
 })
 
-const normalizedPlanType = computed(() =>
-  (props.planType || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
-)
+const normalizedPlanType = computed(() => normalizePlanType(props.planType))
 
 const planLabel = computed(() => {
   if (!normalizedPlanType.value) return ''
+  if (props.platform === 'openai') {
+    const label = openAIPlanTypeLabel(props.planType)
+    if (label) return label
+  }
   switch (normalizedPlanType.value) {
     case 'plus':
       return 'Plus'
@@ -199,6 +202,18 @@ const typeClass = computed(() => {
 const planBadgeClass = computed(() => {
   if (normalizedPlanType.value === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+  }
+  if (props.platform === 'openai') {
+    switch (normalizedPlanType.value) {
+      case 'free':
+      case 'basic': return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+      case 'plus': return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+      case 'team':
+      case 'selfservebusinessprolite': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+      case 'pro':
+      case 'chatgptpro':
+      case 'prolite': return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+    }
   }
   return typeClass.value
 })

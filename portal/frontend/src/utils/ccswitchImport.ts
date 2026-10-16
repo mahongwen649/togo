@@ -2,6 +2,23 @@ import type { GroupPlatform } from '@/types'
 
 export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.5'
 
+export const CC_SWITCH_USAGE_SCRIPT = `({
+    request: {
+      url: "{{baseUrl}}/v1/usage",
+      method: "GET",
+      headers: { "Authorization": "Bearer {{apiKey}}" }
+    },
+    extractor: function(response) {
+      const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
+      const unit = "CNY";
+      return {
+        isValid: response?.is_active ?? response?.isValid ?? true,
+        remaining,
+        unit
+      };
+    }
+  })`
+
 export type CcSwitchClientType = 'claude' | 'gemini'
 
 export interface CcSwitchImportConfig {
@@ -16,7 +33,7 @@ export interface CcSwitchImportDeeplinkInput {
   clientType: CcSwitchClientType
   providerName: string
   apiKey: string
-  usageScript: string
+  usageScript?: string
 }
 
 export function resolveCcSwitchImportConfig(
@@ -58,11 +75,16 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
     ['homepage', input.baseUrl],
     ['endpoint', config.endpoint],
     ['apiKey', input.apiKey],
-    ['configFormat', 'json'],
-    ['usageEnabled', 'true'],
-    ['usageScript', btoa(input.usageScript)],
-    ['usageAutoInterval', '30']
+    ['configFormat', 'json']
   ]
+
+  if (input.usageScript) {
+    entries.push(
+      ['usageEnabled', 'true'],
+      ['usageScript', btoa(input.usageScript)],
+      ['usageAutoInterval', '30']
+    )
+  }
 
   if (config.model) {
     entries.splice(2, 0, ['model', config.model])

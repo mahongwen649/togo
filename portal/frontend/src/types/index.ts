@@ -1423,6 +1423,235 @@ export interface UpdateScheduledTestPlanRequest {
   auto_recover?: boolean
 }
 
+// Core account-management types reused by the account-package UI.  These are
+// intentionally shaped like Core's public account response so the copied Core
+// components can render the same state and actions without a second Portal
+// usage model.
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
+
+export interface ClaudeModel { id: string; type: string; display_name: string; created_at: string }
+
+export interface TempUnschedulableState { until_unix: number; triggered_at_unix: number; status_code: number; matched_keyword: string; rule_index: number; error_message: string; trigger_count?: number; trigger_threshold?: number; trigger_window_minutes?: number }
+
+export interface TempUnschedulableStatus { active: boolean; state?: TempUnschedulableState }
+
+export interface GeminiCredentials {
+  oauth_type?: string
+  tier_id?: string
+  project_id?: string
+  [key: string]: unknown
+}
+
+export interface WindowStats {
+  requests: number
+  tokens: number
+  cost: number
+  standard_cost?: number
+  user_cost?: number
+}
+
+export interface UsageProgress {
+  utilization: number
+  resets_at: string | null
+  remaining_seconds: number
+  window_stats?: WindowStats | null
+  used_requests?: number
+  limit_requests?: number
+}
+
+export interface GrokQuotaWindow {
+  limit?: number | null
+  remaining?: number | null
+  reset_unix?: number | null
+  reset_at?: string | null
+}
+
+export interface GrokBillingSummary {
+  period_type?: string
+  usage_percent?: number | null
+  period_start?: string
+  period_end?: string
+  product_usage?: Array<{ product: string; usage_percent?: number | null }>
+  monthly_limit_cents?: number | null
+  used_cents?: number | null
+  included_used_cents?: number | null
+  billing_period_start?: string
+  billing_period_end?: string
+  used_percent?: number | null
+  prepaid_balance?: number | null
+  monthly_limit?: number | null
+  monthly_used?: number | null
+  on_demand_cap?: number | null
+  on_demand_used?: number | null
+  plan?: string
+  status_code?: number
+  source?: string
+  fetched_at?: string
+  updated_at?: string
+}
+
+export interface AccountUsageInfo {
+  source?: 'passive' | 'active'
+  updated_at: string | null
+  five_hour: UsageProgress | null
+  seven_day: UsageProgress | null
+  seven_day_sonnet: UsageProgress | null
+  seven_day_fable?: UsageProgress | null
+  thirty_day?: UsageProgress | null
+  gemini_shared_daily?: UsageProgress | null
+  gemini_pro_daily?: UsageProgress | null
+  gemini_flash_daily?: UsageProgress | null
+  gemini_shared_minute?: UsageProgress | null
+  gemini_pro_minute?: UsageProgress | null
+  gemini_flash_minute?: UsageProgress | null
+  antigravity_quota?: Record<string, { utilization: number; reset_time: string }> | null
+  grok_request_quota?: GrokQuotaWindow | null
+  grok_token_quota?: GrokQuotaWindow | null
+  grok_retry_after_seconds?: number | null
+  grok_entitlement_status?: string
+  grok_quota_snapshot_state?: string
+  grok_last_quota_probe_at?: string
+  grok_last_headers_seen_at?: string
+  grok_last_status_code?: number
+  grok_free_token_limit?: number
+  grok_local_usage?: WindowStats | null
+  grok_local_usage_24h?: WindowStats | null
+  grok_local_usage_7d?: WindowStats | null
+  grok_local_usage_monthly?: WindowStats | null
+  grok_billing?: GrokBillingSummary | null
+  subscription_tier?: string
+  subscription_tier_raw?: string
+  ai_credits?: Array<{ credit_type?: string; amount?: number; minimum_balance?: number }> | null
+  is_forbidden?: boolean
+  forbidden_reason?: string
+  forbidden_type?: string
+  validation_url?: string
+  needs_verify?: boolean
+  is_banned?: boolean
+  needs_reauth?: boolean
+  error_code?: string
+  error?: string
+}
+
+export interface AccountUsageHistory {
+  date: string
+  label: string
+  requests: number
+  tokens: number
+  cost: number
+  actual_cost: number
+  user_cost: number
+}
+
+export interface AccountUsageSummary {
+  days: number
+  actual_days_used: number
+  total_cost: number
+  total_user_cost: number
+  total_standard_cost: number
+  total_requests: number
+  total_tokens: number
+  avg_daily_cost: number
+  avg_daily_user_cost: number
+  avg_daily_requests: number
+  avg_daily_tokens: number
+  avg_duration_ms: number
+  today: { date: string; cost: number; user_cost: number; requests: number; tokens: number } | null
+  highest_cost_day: { date: string; label: string; cost: number; user_cost: number; requests: number } | null
+  highest_request_day: { date: string; label: string; requests: number; cost: number; user_cost: number } | null
+}
+
+export interface AccountUsageStatsResponse {
+  history: AccountUsageHistory[]
+  summary: AccountUsageSummary
+  models: ModelStat[]
+  endpoints: EndpointStat[]
+  upstream_endpoints: EndpointStat[]
+}
+
+export interface ClaudeModel {
+  id: string
+  type: string
+  display_name: string
+  created_at: string
+}
+
+export interface TempUnschedulableState {
+  until_unix: number
+  triggered_at_unix: number
+  status_code: number
+  matched_keyword: string
+  rule_index: number
+  error_message: string
+  trigger_count?: number
+  trigger_threshold?: number
+  trigger_window_minutes?: number
+}
+
+export interface TempUnschedulableStatus {
+  active: boolean
+  state?: TempUnschedulableState
+}
+
+export interface OllamaCloudUsageState {
+  account_id: number
+  eligible: boolean
+  configured: boolean
+  auto_refresh_enabled: boolean
+  encryption_key_configured: boolean
+  snapshot?: {
+    data?: {
+      five_hour?: { used_percent: number; reset_at?: string }
+      seven_day?: { used_percent: number; reset_at?: string }
+    }
+    [key: string]: unknown
+  }
+}
+
+export interface Account {
+  id: number
+  name: string
+  notes?: string | null
+  platform: AccountPlatform
+  type: AccountType
+  credentials?: Record<string, unknown>
+  credentials_status?: Record<string, boolean>
+  ollama_cloud_usage?: OllamaCloudUsageState
+  extra?: Record<string, any>
+  parent_account_id?: number | null
+  proxy_id?: number | null
+  concurrency?: number
+  load_factor?: number | null
+  priority?: number
+  rate_multiplier?: number
+  status: 'active' | 'inactive' | 'error' | string
+  error_message?: string | null
+  last_used_at?: string | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  schedulable: boolean
+  rate_limited_at?: string | null
+  rate_limit_reset_at?: string | null
+  overload_until?: string | null
+  temp_unschedulable_until?: string | null
+  temp_unschedulable_reason?: string | null
+  quota_limit?: number | null
+  quota_used?: number | null
+  quota_daily_limit?: number | null
+  quota_daily_used?: number | null
+  quota_weekly_limit?: number | null
+  quota_weekly_used?: number | null
+  current_window_cost?: number | null
+  active_sessions?: number | null
+  current_rpm?: number | null
+  created_at?: string
+  updated_at?: string
+  group_ids?: number[]
+  groups?: Group[]
+  usage?: AccountUsageInfo
+}
+
 export type {
   PlatformQuotaItem,
   PlatformQuotaUpdateItem,
@@ -1430,3 +1659,4 @@ export type {
   PlatformQuotaWindow,
   PlatformQuotasResponse,
 } from '@/api/admin/users'
+// 在 types/index.ts 中导出这些类型

@@ -116,7 +116,7 @@
       />
     </div>
 
-    <UserErrorDetailModal v-model:show="showDetail" :error-id="selectedId" />
+    <UserErrorDetailModal v-model:show="showDetail" :error-id="selectedId" :load-detail="loadDetail" />
   </div>
 </template>
 
@@ -141,6 +141,7 @@ import type { UserErrorRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 
 const props = defineProps<{
+  loadDetail?: (id: number) => Promise<import('@/types').UserErrorRequestDetail>
   rows: UserErrorRequest[]
   total: number
   loading: boolean

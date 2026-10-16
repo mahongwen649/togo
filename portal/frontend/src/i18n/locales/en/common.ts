@@ -78,6 +78,8 @@ export default {
     view: 'View',
     settings: 'Settings',
     chooseFile: 'Choose File',
+    selectedFile: 'Selected: {name}',
+    noFileSelected: 'No file selected',
     copy: 'Copy',
     notAvailable: 'N/A',
     now: 'Now',

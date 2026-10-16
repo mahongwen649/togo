@@ -543,7 +543,9 @@ function WorkspaceHome({ username }: { username: string }) {
         model.capabilities.includes(mode),
     );
     const preferredModel =
-      providerDefaultModel ?? selectModelForCapability(modeModels, modelId, mode);
+      modeModels.find((model) => model.id === modelId) ??
+      providerDefaultModel ??
+      modeModels[0];
     if (preferredModel && preferredModel.id !== modelId) {
       setModelId(preferredModel.id);
     }

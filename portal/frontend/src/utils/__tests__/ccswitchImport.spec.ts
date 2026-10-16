@@ -38,6 +38,23 @@ describe('ccswitchImport utils', () => {
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
   })
 
+  it('omits usage polling when the credential has no compatible usage endpoint', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        baseUrl: baseInput.baseUrl,
+        providerName: baseInput.providerName,
+        apiKey: baseInput.apiKey,
+        platform: 'openai',
+        clientType: 'claude'
+      })
+    )
+
+    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.has('usageEnabled')).toBe(false)
+    expect(params.has('usageScript')).toBe(false)
+    expect(params.has('usageAutoInterval')).toBe(false)
+  })
+
   it.each([
     { platform: 'anthropic' as GroupPlatform, clientType: 'claude' as const, app: 'claude' },
     { platform: 'gemini' as GroupPlatform, clientType: 'gemini' as const, app: 'gemini' }

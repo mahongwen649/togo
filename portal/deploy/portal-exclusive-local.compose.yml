@@ -1,0 +1,8 @@
+services:
+  portal-api:
+    environment:
+      CORE_BASE_URL: http://sub2api:8080
+      PORTAL_EXCLUSIVE_INGRESS_ISOLATED: "true"
+  portal-web:
+    ports:
+      - "127.0.0.1:8080:8080"

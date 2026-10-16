@@ -87,6 +87,29 @@
           </template>
         </div>
 
+        <div v-if="ACCOUNT_PACKAGES_ENABLED" class="sidebar-section">
+          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }">
+            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
+              账号套餐
+            </span>
+          </div>
+          <button type="button" class="sidebar-link mb-1 w-full" :class="{ 'sidebar-link-active': route.path.startsWith('/account-business'), 'sidebar-link-collapsed': sidebarCollapsed }" :title="sidebarCollapsed ? '账号套餐' : undefined" @click="router.push('/account-business/home')">
+            <component :is="ModelsIcon" class="h-5 w-5 flex-shrink-0" />
+            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }">账号套餐</span>
+          </button>
+          <div v-if="!sidebarCollapsed" class="ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+            <template v-for="child in accountBusinessNavItem.children" :key="child.path">
+              <button v-if="child.children?.length" type="button" class="sidebar-link mb-0.5 w-full py-1.5 text-sm" :class="{ 'sidebar-link-active': isGroupActive(child) }" @click="toggleGroup(child)">
+                <component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span class="sidebar-label sidebar-label-flex"><span>{{ child.label }}</span><ChevronDownIcon class="h-3.5 w-3.5" :class="isGroupExpanded(child) ? 'rotate-180' : ''" /></span>
+              </button>
+              <div v-if="child.children?.length && isGroupExpanded(child)" class="ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+                <router-link v-for="grandchild in child.children" :key="grandchild.path" :to="grandchild.path" class="sidebar-link mb-0.5 py-1.5 text-xs" :class="{ 'sidebar-link-active': route.path === grandchild.path }"><component :is="grandchild.icon" class="h-3.5 w-3.5 flex-shrink-0" /><span>{{ grandchild.label }}</span></router-link>
+              </div>
+              <router-link v-if="!child.children?.length" :to="child.path" class="sidebar-link mb-0.5 py-1.5 text-sm" :class="{ 'sidebar-link-active': route.path === child.path }"><component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span>{{ child.label }}</span></router-link>
+            </template>
+          </div>
+        </div>
+
         <!-- Personal Section for Admin (hidden in simple mode) -->
         <div v-if="!authStore.isSimpleMode" class="sidebar-section">
           <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
@@ -118,6 +141,20 @@
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
+          <button type="button" class="sidebar-link mb-1 w-full" :class="{ 'sidebar-link-active': isGroupActive(accountBusinessNavItem) && !isGroupExpanded(accountBusinessNavItem), 'sidebar-link-collapsed': sidebarCollapsed }" :title="sidebarCollapsed ? accountBusinessNavItem.label : undefined" @click="handleGroupClick(accountBusinessNavItem)">
+            <component :is="accountBusinessNavItem.icon" class="h-5 w-5 flex-shrink-0" />
+            <span class="sidebar-label sidebar-label-flex" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }">
+              <span>{{ accountBusinessNavItem.label }}</span>
+              <ChevronDownIcon class="h-4 w-4 flex-shrink-0" :class="isGroupExpanded(accountBusinessNavItem) ? 'rotate-180' : ''" />
+            </span>
+          </button>
+          <div v-if="!sidebarCollapsed && isGroupExpanded(accountBusinessNavItem)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+            <template v-for="child in accountBusinessNavItem.children" :key="child.path">
+              <button v-if="child.children?.length" type="button" class="sidebar-link mb-0.5 w-full py-1.5 text-sm" :class="{ 'sidebar-link-active': isGroupActive(child) }" @click="toggleGroup(child)"><component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span class="sidebar-label sidebar-label-flex"><span>{{ child.label }}</span><ChevronDownIcon class="h-3.5 w-3.5" :class="isGroupExpanded(child) ? 'rotate-180' : ''" /></span></button>
+              <div v-if="child.children?.length && isGroupExpanded(child)" class="ml-4 border-l border-gray-200 pl-2 dark:border-dark-600"><router-link v-for="grandchild in child.children" :key="grandchild.path" :to="grandchild.path" class="sidebar-link mb-0.5 py-1.5 text-xs" :class="{ 'sidebar-link-active': route.path === grandchild.path }"><component :is="grandchild.icon" class="h-3.5 w-3.5 flex-shrink-0" /><span>{{ grandchild.label }}</span></router-link></div>
+              <router-link v-if="!child.children?.length" :to="child.path" class="sidebar-link mb-0.5 py-1.5 text-sm" :class="{ 'sidebar-link-active': route.path === child.path }"><component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span>{{ child.label }}</span></router-link>
+            </template>
+          </div>
           <component
             v-for="item in userNavItems"
             :key="item.path"
@@ -180,6 +217,7 @@
 </template>
 
 <script setup lang="ts">
+import { ACCOUNT_PACKAGES_ENABLED, isHiddenPortalPath } from '@/config/portalFeatures'
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -216,6 +254,7 @@ interface NavItem {
 function applyFeatureFlags(items: NavItem[]): NavItem[] {
   const out: NavItem[] = []
   for (const item of items) {
+    if (isHiddenPortalPath(item.path)) continue
     if (item.featureFlag && item.featureFlag() === false) continue
     if (item.children) {
       out.push({ ...item, children: applyFeatureFlags(item.children) })
@@ -293,21 +332,6 @@ const ChartIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z'
-        })
-      ]
-    )
-}
-
-const DocsIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M19.5 14.25v-8.1A2.25 2.25 0 0017.25 3.9H6.75A2.25 2.25 0 004.5 6.15v11.7A2.25 2.25 0 006.75 20.1h10.5a2.25 2.25 0 002.25-2.25v-1.35M8.25 8.25h7.5M8.25 12h5.25M8.25 15.75h3.75'
         })
       ]
     )
@@ -523,9 +547,10 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
 	{ path: '/recharge', label: t('nav.recharge'), icon: CreditCardIcon },
 	{ path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
 	{ path: 'gift:campaign', href: '/gift', label: t('nav.giftCampaign'), icon: GiftIcon },
-	{ path: '/docs', label: t('nav.docs'), icon: DocsIcon, hideInSimpleMode: true },
+	{ path: '/exclusive-channels', label: '独享通道', icon: ModelsIcon, hideInSimpleMode: true },
 	{ path: '/models', label: t('nav.modelMarket'), icon: ModelsIcon, hideInSimpleMode: true },
 	{ path: '/monitor', label: t('nav.siteMonitor'), icon: SignalIcon, hideInSimpleMode: true, featureFlag: () => appStore.cachedPublicSettings?.channel_monitor_enabled !== false },
+	{ path: '/pelican-checks', label: '鹈鹕绘图检查', icon: ImageIcon, hideInSimpleMode: true },
 	{ path: 'imgtool:sso', label: t('nav.imageGeneration'), icon: ImageIcon, hideInSimpleMode: true },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     {
@@ -552,7 +577,41 @@ const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(tru
 // Personal navigation items (for admin's "My Account" section, without Dashboard).
 // Admins access 可用渠道 from this section just like regular users — there is no
 // separate admin entry, since the page is purely a user-facing view.
-const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
+const personalNavItems = computed((): NavItem[] => finalizeNav(
+  buildSelfNavItems(false).filter(item => !isFullAdmin.value || item.path !== '/pelican-checks')
+))
+
+const accountBusinessNavItem: NavItem = {
+  path: '/account-business',
+  label: '账号套餐',
+  icon: ModelsIcon,
+  expandOnly: true,
+  children: [
+    { path: '/account-business/home', label: '购买套餐', icon: DashboardIcon },
+    { path: '/account-business/packages', label: '我的套餐', icon: UserIcon },
+    { path: '/account-business/usage', label: '使用记录', icon: ChartIcon },
+    { path: '/account-business/orders', label: '我的订单', icon: ChartIcon },
+    { path: '/account-business/api-keys', label: '账号专用 Key', icon: KeyIcon },
+    { path: '/account-business/balance', label: '余额中心', icon: CreditCardIcon, expandOnly: true, children: [
+      { path: '/account-business/balance/redeem', label: '卡密兑换', icon: GiftIcon },
+      { path: '/account-business/balance/history', label: '充值记录', icon: ChartIcon }
+    ] }
+  ]
+}
+
+const adminAccountBusinessNavItem: NavItem = {
+  path: '/admin/account-business',
+  label: '账号管理',
+  icon: ModelsIcon,
+  expandOnly: true,
+  children: [
+    { path: '/admin/account-business/products', label: '商品配置', icon: ModelsIcon },
+    { path: '/admin/account-business/orders', label: '订单处理', icon: ChartIcon },
+    { path: '/admin/account-business/transactions', label: '充值 / 兑换记录', icon: CreditCardIcon },
+    { path: '/admin/account-business/users', label: '用户套餐查询', icon: UsersIcon },
+    { path: '/admin/account-business/redeem-codes', label: '卡密管理', icon: GiftIcon }
+  ]
+}
 
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
@@ -569,7 +628,11 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/recharges', label: '充值记录', icon: CreditCardIcon }
+    { path: '/admin/recharges', label: '充值记录', icon: CreditCardIcon },
+    adminAccountBusinessNavItem,
+    { path: '/admin/exclusive-channels', label: '独享通道管理', icon: ModelsIcon, hideInSimpleMode: true },
+    { path: '/admin/pelican-checks', label: '鹈鹕绘图检查', icon: ImageIcon, hideInSimpleMode: true },
+    { path: '/admin/account-checks', label: '账号降智检查', icon: ModelsIcon }
   ]
 
   const visible = applyFeatureFlags(baseItems)
@@ -650,11 +713,12 @@ function isActive(path: string): boolean {
 
 function isGroupActive(item: NavItem): boolean {
   if (!item.children) return false
-  return item.children.some(child => route.path === child.path)
+  return item.children.some(child => route.path === child.path || isGroupActive(child))
 }
 
 function isGroupExpanded(item: NavItem): boolean {
-  return expandedGroups.value.has(item.path) || isGroupActive(item)
+  const autoExpandActiveGroup = item.path !== accountBusinessNavItem.path
+  return expandedGroups.value.has(item.path) || (autoExpandActiveGroup && isGroupActive(item))
 }
 
 function toggleGroup(item: NavItem) {

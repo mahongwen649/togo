@@ -4,6 +4,7 @@ backend/*.exe
 backend/*.exe~
 backend/*.test
 frontend/node_modules
+frontend/.pnpm-store
 frontend/dist
 frontend/coverage
 frontend/*.tsbuildinfo
