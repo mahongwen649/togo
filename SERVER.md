@@ -1,8 +1,17 @@
 # TogoAPI Server Handoff
 
-Last updated: 2026-10-14 (Asia/Shanghai)
+Last updated: 2026-10-16 (Asia/Shanghai)
 
 This is the deployment handoff for future sessions. It deliberately contains no passwords, private-key contents, Admin API Keys, database credentials, or application secrets.
+
+## Source synchronization — 2026-10-16
+
+- Committed the accumulated Portal and Imgtool source changes in `0b37c9e` and pushed to `origin/main`. Core and NewSub remain independent upstream checkouts; local captures, browser profiles, and validation output are excluded from the main repository.
+- Compared production Portal backend/frontend source and Imgtool internal/frontend source with local files, ignoring line endings. Business source matched. The production Compose file lacked only the optional `PORTAL_AUTH_UPSTREAM_URL` environment forwarding entry.
+- Portal frontend: 140 test files, 861 tests passed, TypeScript/production build passed. Imgtool frontend: 16 tests passed and TypeScript/production build passed. Both Go backend full suites passed in resource-limited Linux containers; Portal database tests used a temporary isolated PostgreSQL, removed after validation. Live upstream tests remained opt-in.
+- At 10:47 Asia/Shanghai, synchronized the Compose entry and recreated only Portal API using its existing image. Portal Web, Core, NewSub and other Docker container identities were verified unchanged. Portal API/Web and Core were healthy with zero restarts; public Portal, Core and Imgtool health checks passed. No application image was rebuilt or replaced.
+- Backup: `/opt/backups/local-sync-20261016/` contains the previous Compose files, Portal database dump, readable restore listing, verified SHA-256 manifest and before/after container identities. Validation source and logs: `/opt/releases/local-sync-20261016/`. Revert the Compose change by restoring the backed-up `docker-compose.yml` and recreating only Portal API with the production Compose pair and `--no-deps --no-build`; no database restoration is needed for this configuration change.
+- The user subsequently clarified that only commit/push was intended. No further deployment actions were taken after that clarification.
 
 ## Architecture
 
