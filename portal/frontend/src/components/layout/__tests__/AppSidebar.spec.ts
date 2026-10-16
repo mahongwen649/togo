@@ -63,9 +63,9 @@ describe('AppSidebar account package navigation', () => {
     expect(componentSource).not.toContain("badge: '推荐'")
   })
 
-  it('keeps the account package group collapsed until the user expands it', () => {
-    expect(componentSource).toContain("const autoExpandActiveGroup = item.path !== accountBusinessNavItem.path")
-    expect(componentSource).toContain('expandedGroups.value.has(item.path) || (autoExpandActiveGroup && isGroupActive(item))')
+  it('removes the account package menu from all role branches', () => {
+    expect(componentSource).not.toContain('账号套餐')
+    expect(componentSource).not.toContain('accountBusinessNavItem')
   })
 })
 

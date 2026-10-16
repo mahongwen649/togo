@@ -87,29 +87,6 @@
           </template>
         </div>
 
-        <div v-if="ACCOUNT_PACKAGES_ENABLED" class="sidebar-section">
-          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }">
-            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
-              账号套餐
-            </span>
-          </div>
-          <button type="button" class="sidebar-link mb-1 w-full" :class="{ 'sidebar-link-active': route.path.startsWith('/account-business'), 'sidebar-link-collapsed': sidebarCollapsed }" :title="sidebarCollapsed ? '账号套餐' : undefined" @click="router.push('/account-business/home')">
-            <component :is="ModelsIcon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }">账号套餐</span>
-          </button>
-          <div v-if="!sidebarCollapsed" class="ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
-            <template v-for="child in accountBusinessNavItem.children" :key="child.path">
-              <button v-if="child.children?.length" type="button" class="sidebar-link mb-0.5 w-full py-1.5 text-sm" :class="{ 'sidebar-link-active': isGroupActive(child) }" @click="toggleGroup(child)">
-                <component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span class="sidebar-label sidebar-label-flex"><span>{{ child.label }}</span><ChevronDownIcon class="h-3.5 w-3.5" :class="isGroupExpanded(child) ? 'rotate-180' : ''" /></span>
-              </button>
-              <div v-if="child.children?.length && isGroupExpanded(child)" class="ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
-                <router-link v-for="grandchild in child.children" :key="grandchild.path" :to="grandchild.path" class="sidebar-link mb-0.5 py-1.5 text-xs" :class="{ 'sidebar-link-active': route.path === grandchild.path }"><component :is="grandchild.icon" class="h-3.5 w-3.5 flex-shrink-0" /><span>{{ grandchild.label }}</span></router-link>
-              </div>
-              <router-link v-if="!child.children?.length" :to="child.path" class="sidebar-link mb-0.5 py-1.5 text-sm" :class="{ 'sidebar-link-active': route.path === child.path }"><component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span>{{ child.label }}</span></router-link>
-            </template>
-          </div>
-        </div>
-
         <!-- Personal Section for Admin (hidden in simple mode) -->
         <div v-if="!authStore.isSimpleMode" class="sidebar-section">
           <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
@@ -141,20 +118,6 @@
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <button type="button" class="sidebar-link mb-1 w-full" :class="{ 'sidebar-link-active': isGroupActive(accountBusinessNavItem) && !isGroupExpanded(accountBusinessNavItem), 'sidebar-link-collapsed': sidebarCollapsed }" :title="sidebarCollapsed ? accountBusinessNavItem.label : undefined" @click="handleGroupClick(accountBusinessNavItem)">
-            <component :is="accountBusinessNavItem.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label sidebar-label-flex" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }">
-              <span>{{ accountBusinessNavItem.label }}</span>
-              <ChevronDownIcon class="h-4 w-4 flex-shrink-0" :class="isGroupExpanded(accountBusinessNavItem) ? 'rotate-180' : ''" />
-            </span>
-          </button>
-          <div v-if="!sidebarCollapsed && isGroupExpanded(accountBusinessNavItem)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
-            <template v-for="child in accountBusinessNavItem.children" :key="child.path">
-              <button v-if="child.children?.length" type="button" class="sidebar-link mb-0.5 w-full py-1.5 text-sm" :class="{ 'sidebar-link-active': isGroupActive(child) }" @click="toggleGroup(child)"><component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span class="sidebar-label sidebar-label-flex"><span>{{ child.label }}</span><ChevronDownIcon class="h-3.5 w-3.5" :class="isGroupExpanded(child) ? 'rotate-180' : ''" /></span></button>
-              <div v-if="child.children?.length && isGroupExpanded(child)" class="ml-4 border-l border-gray-200 pl-2 dark:border-dark-600"><router-link v-for="grandchild in child.children" :key="grandchild.path" :to="grandchild.path" class="sidebar-link mb-0.5 py-1.5 text-xs" :class="{ 'sidebar-link-active': route.path === grandchild.path }"><component :is="grandchild.icon" class="h-3.5 w-3.5 flex-shrink-0" /><span>{{ grandchild.label }}</span></router-link></div>
-              <router-link v-if="!child.children?.length" :to="child.path" class="sidebar-link mb-0.5 py-1.5 text-sm" :class="{ 'sidebar-link-active': route.path === child.path }"><component :is="child.icon" class="h-4 w-4 flex-shrink-0" /><span>{{ child.label }}</span></router-link>
-            </template>
-          </div>
           <component
             v-for="item in userNavItems"
             :key="item.path"
@@ -217,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { ACCOUNT_PACKAGES_ENABLED, isHiddenPortalPath } from '@/config/portalFeatures'
+import { isHiddenPortalPath } from '@/config/portalFeatures'
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -581,24 +544,6 @@ const personalNavItems = computed((): NavItem[] => finalizeNav(
   buildSelfNavItems(false).filter(item => !isFullAdmin.value || item.path !== '/pelican-checks')
 ))
 
-const accountBusinessNavItem: NavItem = {
-  path: '/account-business',
-  label: '账号套餐',
-  icon: ModelsIcon,
-  expandOnly: true,
-  children: [
-    { path: '/account-business/home', label: '购买套餐', icon: DashboardIcon },
-    { path: '/account-business/packages', label: '我的套餐', icon: UserIcon },
-    { path: '/account-business/usage', label: '使用记录', icon: ChartIcon },
-    { path: '/account-business/orders', label: '我的订单', icon: ChartIcon },
-    { path: '/account-business/api-keys', label: '账号专用 Key', icon: KeyIcon },
-    { path: '/account-business/balance', label: '余额中心', icon: CreditCardIcon, expandOnly: true, children: [
-      { path: '/account-business/balance/redeem', label: '卡密兑换', icon: GiftIcon },
-      { path: '/account-business/balance/history', label: '充值记录', icon: ChartIcon }
-    ] }
-  ]
-}
-
 const adminAccountBusinessNavItem: NavItem = {
   path: '/admin/account-business',
   label: '账号管理',
@@ -717,8 +662,7 @@ function isGroupActive(item: NavItem): boolean {
 }
 
 function isGroupExpanded(item: NavItem): boolean {
-  const autoExpandActiveGroup = item.path !== accountBusinessNavItem.path
-  return expandedGroups.value.has(item.path) || (autoExpandActiveGroup && isGroupActive(item))
+  return expandedGroups.value.has(item.path) || isGroupActive(item)
 }
 
 function toggleGroup(item: NavItem) {
