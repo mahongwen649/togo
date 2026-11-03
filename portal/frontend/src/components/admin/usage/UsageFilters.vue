@@ -101,10 +101,35 @@
           <Select v-model="filters.model" :options="modelOptions" searchable @change="emitChange" />
         </div>
 
+        <!-- Account search uses the same Core catalogue as its usage filters. -->
+        <div v-if="showAccountFilter" ref="accountSearchRef" :class="['usage-filter-dropdown relative', isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[220px]']">
+          <label class="input-label">{{ t('admin.usage.account') }}</label>
+          <input
+            v-model="accountKeyword"
+            type="text"
+            class="input pr-8"
+            :placeholder="t('admin.usage.searchAccountPlaceholder')"
+            @input="debounceAccountSearch"
+            @focus="showAccountDropdown = true"
+          />
+          <button v-if="filters.account_id" type="button" class="absolute right-2 top-9 text-gray-400" :aria-label="t('admin.usage.clearAccountFilter')" data-testid="clear-account-filter" @click="clearAccount">✕</button>
+          <div v-if="showAccountDropdown && accountResults.length > 0" class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-gray-800">
+            <button v-for="account in accountResults" :key="account.id" type="button" class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700" @click="selectAccount(account)">
+              <span class="truncate">{{ account.name }}</span>
+              <span class="ml-2 text-xs text-gray-400">#{{ account.id }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Request Type Filter -->
         <div v-if="mode !== 'errors'" :class="isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[180px]'">
           <label class="input-label">{{ t('usage.type') }}</label>
           <Select v-model="filters.request_type" :options="requestTypeOptions" @change="emitChange" />
+        </div>
+
+        <div v-if="mode === 'usage' || mode === 'ranking'" :class="isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[180px]'">
+          <label class="input-label">{{ t('usage.compactionFilter') }}</label>
+          <Select v-model="filters.native_compaction_v2" :options="compactionOptions" @change="emitChange" />
         </div>
 
         <!-- Billing Type Filter -->
@@ -117,6 +142,16 @@
         <div v-if="mode === 'usage'" :class="isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[200px]'">
           <label class="input-label">{{ t('admin.usage.billingMode') }}</label>
           <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="emitChange" />
+        </div>
+
+        <div v-if="mode === 'usage'" :class="isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[220px]'">
+          <label class="input-label">{{ t('admin.usage.upstreamModelAudit') }}</label>
+          <Select v-model="filters.upstream_model_mismatch" :options="upstreamModelMismatchOptions" @change="emitChange" />
+        </div>
+
+        <div v-if="mode === 'errors'" :class="isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[180px]'">
+          <label class="input-label">{{ t('admin.usage.errorPhase') }}</label>
+          <Select v-model="filters.error_phase" :options="errorPhaseOptions" @change="emitChange" />
         </div>
 
         <div v-if="mode === 'errors'" :class="isMobileH5 ? 'min-w-0' : 'w-full sm:w-auto sm:min-w-[200px]'">
@@ -167,7 +202,7 @@ import { groupsAPI } from '@/api/admin/groups'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { COMMON_ERROR_STATUS_CODES } from '@/utils/errorBadges'
-import type { SimpleApiKey, SimpleUser } from '@/api/admin/usage'
+import type { SimpleAccount, SimpleApiKey, SimpleUser } from '@/api/admin/usage'
 import { useMobileCollapse } from '@/composables/useMobileCollapse'
 
 type ModelValue = Record<string, any>
@@ -180,10 +215,11 @@ interface Props {
   showActions?: boolean
   modelOptions?: string[]
   showCleanup?: boolean
+  showAccountFilter?: boolean
   /**
    * errors 模式显示错误分类和状态；ranking 模式隐藏计费模式与清理/导出按钮。
    */
-  mode?: 'usage' | 'errors' | 'ranking'
+  mode?: 'usage' | 'errors' | 'ranking' | 'cleanup'
   /** 嵌入统一卡片内使用：去掉自身卡片外观 */
   flat?: boolean
 }
@@ -191,6 +227,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   showActions: true,
   showCleanup: true,
+  showAccountFilter: true,
   mode: 'usage',
   flat: false
 })
@@ -209,6 +246,13 @@ const filters = toRef(props, 'modelValue')
 
 const userSearchRef = ref<HTMLElement | null>(null)
 const apiKeySearchRef = ref<HTMLElement | null>(null)
+const accountSearchRef = ref<HTMLElement | null>(null)
+const accountKeyword = ref('')
+const accountResults = ref<SimpleAccount[]>([])
+const showAccountDropdown = ref(false)
+let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let accountSearchSequence = 0
+let accountSearchController: AbortController | null = null
 
 const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
@@ -229,9 +273,31 @@ const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.a
 const requestTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allTypes') },
   { value: 'ws_v2', label: t('usage.ws') },
+  { value: 'live', label: t('usage.live') },
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },
   { value: 'cyber', label: t('usage.cyber') }
+])
+
+const compactionOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('usage.allCompactionTypes') },
+  { value: true, label: t('usage.compactionOnly') }
+])
+
+const upstreamModelMismatchOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.allUpstreamModelAudit') },
+  { value: true, label: t('admin.usage.upstreamModelMismatchOnly') },
+  { value: false, label: t('admin.usage.upstreamModelMatchedOnly') }
+])
+
+const errorPhaseOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.allTypes') },
+  { value: 'upstream', label: t('admin.usage.errorPhases.upstream') },
+  { value: 'account_auth', label: t('admin.usage.errorPhases.accountAuth') },
+  { value: 'request', label: t('admin.usage.errorPhases.request') },
+  { value: 'auth', label: t('admin.usage.errorPhases.auth') },
+  { value: 'routing', label: t('admin.usage.errorPhases.routing') },
+  { value: 'internal', label: t('admin.usage.errorPhases.internal') }
 ])
 
 const billingTypeOptions = ref<SelectOption[]>([
@@ -348,6 +414,54 @@ const onClearApiKey = () => {
   emitChange()
 }
 
+const cancelAccountSearch = () => {
+  if (accountSearchTimeout) clearTimeout(accountSearchTimeout)
+  accountSearchTimeout = null
+  accountSearchController?.abort()
+  accountSearchController = null
+  accountSearchSequence += 1
+}
+
+const debounceAccountSearch = () => {
+  cancelAccountSearch()
+  accountResults.value = []
+  const query = accountKeyword.value.trim()
+  if (!query) {
+    if (filters.value.account_id != null) clearAccount()
+    return
+  }
+  const sequence = accountSearchSequence
+  accountSearchTimeout = setTimeout(async () => {
+    accountSearchTimeout = null
+    const controller = new AbortController()
+    accountSearchController = controller
+    try {
+      const results = await adminUsageAPI.searchAccounts(query, controller.signal)
+      if (sequence === accountSearchSequence) accountResults.value = results
+    } catch {
+      if (sequence === accountSearchSequence) accountResults.value = []
+    }
+  }, 300)
+}
+
+const selectAccount = (account: SimpleAccount) => {
+  cancelAccountSearch()
+  accountKeyword.value = account.name
+  accountResults.value = []
+  showAccountDropdown.value = false
+  filters.value.account_id = account.id
+  emitChange()
+}
+
+const clearAccount = () => {
+  cancelAccountSearch()
+  accountKeyword.value = ''
+  accountResults.value = []
+  showAccountDropdown.value = false
+  filters.value.account_id = undefined
+  emitChange()
+}
+
 const onApiKeyFocus = () => {
   showApiKeyDropdown.value = true
   // Trigger search if no results yet
@@ -365,6 +479,7 @@ const onDocumentClick = (e: MouseEvent) => {
 
   if (!clickedInsideUser) showUserDropdown.value = false
   if (!clickedInsideApiKey) showApiKeyDropdown.value = false
+  if (!accountSearchRef.value?.contains(target)) showAccountDropdown.value = false
 }
 
 watch(
@@ -403,6 +518,18 @@ watch(
   }
 )
 
+watch(
+  () => [filters.value, filters.value.account_id] as const,
+  ([, accountId]) => {
+    if (accountId == null) {
+      cancelAccountSearch()
+      accountKeyword.value = ''
+      accountResults.value = []
+      showAccountDropdown.value = false
+    }
+  }
+)
+
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
   try {
@@ -414,6 +541,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  cancelAccountSearch()
+  if (userSearchTimeout) clearTimeout(userSearchTimeout)
+  if (apiKeySearchTimeout) clearTimeout(apiKeySearchTimeout)
   document.removeEventListener('click', onDocumentClick)
 })
 

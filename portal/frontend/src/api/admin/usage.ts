@@ -39,6 +39,11 @@ export interface SimpleApiKey {
   user_id: number
 }
 
+export interface SimpleAccount {
+  id: number
+  name: string
+}
+
 export interface UsageCleanupFilters {
   start_time: string
   end_time: string
@@ -85,6 +90,7 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   user_id?: number
   exact_total?: boolean
   billing_mode?: string
+  upstream_model_mismatch?: boolean
   sort_by?: string
   sort_order?: 'asc' | 'desc'
   // 错误请求 tab 专属筛选(仅传给错误列表接口;共用同一 filters 对象)
@@ -142,6 +148,7 @@ export interface AdminErrorListParams {
   account_id?: number
   group_id?: number
   model?: string
+  phase?: string
   category?: string
   status_codes?: string
   sort_by?: string
@@ -179,6 +186,8 @@ export async function getStats(params: {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  native_compaction_v2?: boolean | null
+  upstream_model_mismatch?: boolean
   period?: string
   start_date?: string
   end_date?: string
@@ -219,6 +228,14 @@ export async function searchApiKeys(userId?: number, keyword?: string): Promise<
   }
   const { data } = await apiClient.get<SimpleApiKey[]>('/admin/usage/search-api-keys', {
     params
+  })
+  return data
+}
+
+export async function searchAccounts(keyword: string, signal?: AbortSignal): Promise<SimpleAccount[]> {
+  const { data } = await apiClient.get<SimpleAccount[]>('/admin/usage/search-accounts', {
+    params: { q: keyword },
+    signal
   })
   return data
 }
@@ -283,6 +300,7 @@ export const adminUsageAPI = {
   getStats,
   searchUsers,
   searchApiKeys,
+  searchAccounts,
   listErrors,
   getErrorDetail,
   listCleanupTasks,

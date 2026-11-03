@@ -10,6 +10,8 @@ const messages: Record<string, string> = {
   'admin.usage.searchUserPlaceholder': 'Search user...',
   'usage.apiKeyFilter': 'API Key',
   'admin.usage.searchApiKeyPlaceholder': 'Search API key...',
+  'admin.usage.account': 'Account',
+  'admin.usage.searchAccountPlaceholder': 'Search account...',
   'usage.model': 'Model',
   'admin.usage.allModels': 'All Models',
   'usage.type': 'Type',
@@ -53,12 +55,14 @@ vi.mock('vue-i18n', async () => {
 // Mock the admin API module — we control searchUsers return value per test
 const mockSearchUsers = vi.fn()
 const mockSearchApiKeys = vi.fn().mockResolvedValue([])
+const mockSearchAccounts = vi.fn().mockResolvedValue([])
 const mockGetAllGroups = vi.fn().mockResolvedValue([])
 
 vi.mock('@/api/admin/usage', () => ({
   adminUsageAPI: {
     searchUsers: (...args: any[]) => mockSearchUsers(...args),
     searchApiKeys: (...args: any[]) => mockSearchApiKeys(...args),
+    searchAccounts: (...args: any[]) => mockSearchAccounts(...args),
   },
 }))
 
@@ -80,7 +84,7 @@ const defaultFilters = () => ({
   end_date: '',
 })
 
-function mountFilters(filters = defaultFilters(), mode: 'usage' | 'errors' | 'ranking' = 'usage') {
+function mountFilters(filters = defaultFilters(), mode: 'usage' | 'errors' | 'ranking' | 'cleanup' = 'usage') {
   return mount(UsageFilters, {
     props: {
       modelValue: filters,
@@ -163,6 +167,97 @@ describe('UsageFilters — user search dropdown', () => {
     // Also confirm user_id was set by checking the emitted change came through
     // (the component uses toRef so modelValue is mutated in place and 'change' is emitted)
     expect(wrapper.props('modelValue').user_id).toBe(1)
+  })
+})
+
+describe('UsageFilters — Core filter parity', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mockSearchAccounts.mockReset().mockResolvedValue([])
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('searches by account name, selects its ID, and clears the selection', async () => {
+    mockSearchAccounts.mockResolvedValue([{ id: 42, name: 'Account Alpha' }])
+    const wrapper = mountFilters()
+    const input = wrapper.get('input[placeholder="Search account..."]')
+    await input.trigger('focus')
+    await input.setValue('  Alpha  ')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(mockSearchAccounts).toHaveBeenCalledWith('Alpha', expect.any(AbortSignal))
+    const option = wrapper.findAll('button').find((button) => button.text().includes('Account Alpha'))!
+    await option.trigger('click')
+    expect(wrapper.props('modelValue').account_id).toBe(42)
+    expect((input.element as HTMLInputElement).value).toBe('Account Alpha')
+    await wrapper.get('[data-testid="clear-account-filter"]').trigger('click')
+    expect(wrapper.props('modelValue').account_id).toBeUndefined()
+    expect((input.element as HTMLInputElement).value).toBe('')
+    expect(wrapper.emitted('change')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('discards stale account responses and cancels searches after reset or unmount', async () => {
+    let resolveOld!: (value: Array<{ id: number; name: string }>) => void
+    mockSearchAccounts.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
+    const wrapper = mountFilters()
+    const input = wrapper.get('input[placeholder="Search account..."]')
+    await input.trigger('focus')
+    await input.setValue('old')
+    await vi.advanceTimersByTimeAsync(300)
+    const oldSignal = mockSearchAccounts.mock.calls[0][1] as AbortSignal
+    mockSearchAccounts.mockResolvedValueOnce([{ id: 2, name: 'New account' }])
+    await input.setValue('new')
+    await vi.advanceTimersByTimeAsync(300)
+    resolveOld([{ id: 1, name: 'Stale account' }])
+    await flushPromises()
+    expect(oldSignal.aborted).toBe(true)
+    expect(wrapper.text()).toContain('New account')
+    expect(wrapper.text()).not.toContain('Stale account')
+    await input.setValue('reset pending')
+    await wrapper.setProps({ modelValue: defaultFilters() })
+    await vi.advanceTimersByTimeAsync(300)
+    expect((input.element as HTMLInputElement).value).toBe('')
+    expect(mockSearchAccounts).toHaveBeenCalledTimes(2)
+    await input.setValue('unmount pending')
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(mockSearchAccounts).toHaveBeenCalledTimes(2)
+  })
+
+  it('supports live requests, compaction, and both true and false model audit values', async () => {
+    const wrapper = mountFilters()
+    const selectors = wrapper.findAllComponents({ name: 'Select' })
+    const withValue = (value: unknown) => selectors.find((select) => select.props('options').some((option: any) => option.value === value))!
+    expect(withValue('live').exists()).toBe(true)
+    const audit = selectors.find((select) => select.props('options').some((option: any) => option.label === 'admin.usage.upstreamModelMatchedOnly'))!
+    audit.vm.$emit('update:modelValue', false)
+    audit.vm.$emit('change', false)
+    await flushPromises()
+    expect(wrapper.props('modelValue').upstream_model_mismatch).toBe(false)
+    const compaction = selectors.find((select) => select.props('options').some((option: any) => option.label === 'usage.compactionOnly'))!
+    compaction.vm.$emit('update:modelValue', true)
+    compaction.vm.$emit('change', true)
+    await flushPromises()
+    expect(wrapper.props('modelValue').native_compaction_v2).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('only offers error phases in the error tab and hides unsupported cleanup filters', async () => {
+    const wrapper = mountFilters(defaultFilters(), 'errors')
+    expect(wrapper.text()).toContain('admin.usage.errorPhase')
+    expect(wrapper.text()).not.toContain('usage.compactionFilter')
+    const phases = wrapper.findAllComponents({ name: 'Select' }).find((select) => select.props('options').some((option: any) => option.value === 'account_auth'))!
+    phases.vm.$emit('update:modelValue', 'account_auth')
+    await flushPromises()
+    expect(wrapper.props('modelValue').error_phase).toBe('account_auth')
+    await wrapper.setProps({ mode: 'cleanup' })
+    expect(wrapper.text()).not.toContain('usage.compactionFilter')
+    expect(wrapper.text()).not.toContain('admin.usage.upstreamModelAudit')
+    expect(wrapper.text()).not.toContain('admin.usage.errorPhase')
+    await wrapper.setProps({ showAccountFilter: false })
+    expect(wrapper.find('input[placeholder="Search account..."]').exists()).toBe(false)
+    wrapper.unmount()
   })
 })
 

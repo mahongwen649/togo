@@ -73,7 +73,7 @@
           </button>
         </div>
 
-        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" :show-cleanup="authStore.isFullAdmin" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" :show-cleanup="authStore.isFullAdmin" :show-account-filter="authStore.isFullAdmin" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
             <div v-if="activeTab === 'usage'" class="relative" ref="columnDropdownRef">
               <button
@@ -194,6 +194,7 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { formatUsageOutputRate } from '@/utils/latencyHealth'
 import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminErrorRequest, AdminUsageStatsResponse, AdminUsageQueryParams } from '@/api/admin/usage'
 
 const { t } = useI18n()
@@ -237,6 +238,7 @@ const breakdownFilters = computed(() => {
   if (filters.value.account_id) f.account_id = filters.value.account_id
   if (filters.value.group_id) f.group_id = filters.value.group_id
   if (filters.value.request_type != null) f.request_type = filters.value.request_type
+  if (filters.value.native_compaction_v2 != null) f.native_compaction_v2 = filters.value.native_compaction_v2
   if (filters.value.billing_type != null) f.billing_type = filters.value.billing_type
   return f
 })
@@ -340,19 +342,25 @@ const onDateRangeChange = (range: { startDate: string; endDate: string; preset: 
   applyFilters()
 }
 
+const buildUsageFilterParams = (): AdminUsageQueryParams => {
+  const params = { ...filters.value }
+  delete params.error_phase
+  delete params.error_category
+  delete params.status_code
+  const legacyStream = params.request_type ? requestTypeToLegacyStream(params.request_type) : params.stream
+  return { ...params, stream: legacyStream === null ? undefined : legacyStream }
+}
+
 const buildUsageListParams = (
   page: number,
   pageSize: number,
   exactTotal: boolean
 ): AdminUsageQueryParams => {
-  const requestType = filters.value.request_type
-  const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
   return {
     page,
     page_size: pageSize,
     exact_total: exactTotal,
-    ...filters.value,
-    stream: legacyStream === null ? undefined : legacyStream,
+    ...buildUsageFilterParams(),
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -372,11 +380,8 @@ const loadStats = async (force = false) => {
   const seq = ++statsReqSeq
   endpointStatsLoading.value = true
   try {
-    const requestType = filters.value.request_type
-    const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
     const s = await adminUsageAPI.getStats({
-      ...filters.value,
-      stream: legacyStream === null ? undefined : legacyStream,
+      ...buildUsageFilterParams(),
       ...(force ? { nocache: 1 } : {}),
     })
     if (seq !== statsReqSeq) return
@@ -421,6 +426,8 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       request_type: requestType,
+      native_compaction_v2: filters.value.native_compaction_v2,
+      upstream_model_mismatch: filters.value.upstream_model_mismatch,
       stream: legacyStream === null ? undefined : legacyStream,
       billing_type: filters.value.billing_type,
     }
@@ -470,6 +477,8 @@ const loadChartData = async () => {
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       request_type: requestType,
+      native_compaction_v2: filters.value.native_compaction_v2,
+      upstream_model_mismatch: filters.value.upstream_model_mismatch,
       stream: legacyStream === null ? undefined : legacyStream,
       billing_type: filters.value.billing_type,
       include_stats: false,
@@ -531,6 +540,7 @@ const openCleanupDialog = () => { cleanupDialogVisible.value = true }
 const getRequestTypeLabel = (log: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return t('usage.cyber')
+  if (requestType === 'live') return t('usage.live')
   if (requestType === 'ws_v2') return t('usage.ws')
   if (requestType === 'stream') return t('usage.stream')
   if (requestType === 'sync') return t('usage.sync')
@@ -545,15 +555,15 @@ const exportToExcel = async () => {
     const XLSX = await import('xlsx')
     const headers = [
       t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
-      t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.reasoningEffort'), t('admin.usage.group'),
+      t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.upstreamResponseModel'), t('usage.upstreamModelMismatch'), t('usage.reasoningEffort'), t('admin.usage.group'),
       t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'),
-      t('usage.type'),
+      t('usage.type'), t('usage.nativeCompactionV2'),
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
       t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
       t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
       t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
-      t('usage.firstToken'), t('usage.duration'),
+      t('usage.firstToken'), t('usage.duration'), t('usage.outputTps'),
       t('admin.usage.requestId'), t('usage.userAgent'), t('admin.usage.ipAddress')
     ]
     const ws = XLSX.utils.aoa_to_sheet([headers])
@@ -565,14 +575,14 @@ const exportToExcel = async () => {
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total }
       const rows = (res.items || []).map((log: AdminUsageLog) => [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
-        log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
-        log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
+        log.upstream_model || '', log.upstream_response_model || '', log.upstream_model_mismatch == null ? '' : t(log.upstream_model_mismatch ? 'common.yes' : 'common.no'), formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
+        log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log), log.native_compaction_v2 == null ? '' : t(log.native_compaction_v2 ? 'common.yes' : 'common.no'),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
         log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
-        ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms,
+        ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms, formatUsageOutputRate(log),
         log.request_id || '', log.user_agent || '', log.ip_address || ''
       ])
       if (rows.length) {
@@ -726,6 +736,7 @@ const loadAdminErrors = async () => {
       account_id: filters.value.account_id,
       group_id: filters.value.group_id,
       model: filters.value.model || undefined,
+      phase: filters.value.error_phase || undefined,
       category: filters.value.error_category || undefined,
       status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
       sort_by: errorSortBy.value,

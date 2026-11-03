@@ -20,6 +20,13 @@ const { list, listErrors, getStats, getSnapshotV2, getById, getModelStats } = vi
   }
 })
 
+const exportMocks = vi.hoisted(() => ({
+  aoa_to_sheet: vi.fn(() => ({})), sheet_add_aoa: vi.fn(), book_new: vi.fn(() => ({})),
+  book_append_sheet: vi.fn(), write: vi.fn(() => new Uint8Array()), saveAs: vi.fn(),
+}))
+vi.mock('xlsx', () => ({ utils: exportMocks, write: exportMocks.write }))
+vi.mock('file-saver', () => ({ saveAs: exportMocks.saveAs }))
+
 const messages: Record<string, string> = {
   'admin.dashboard.timeRange': 'Time Range',
   'admin.dashboard.day': 'Day',
@@ -139,6 +146,54 @@ const GroupDistributionChartStub = {
 }
 
 describe('admin UsageView distribution metric toggles', () => {
+  it('keeps Core filters across lists, stats, charts, export, errors, and reset', async () => {
+    const wrapper = mount(UsageView, {
+      global: { stubs: {
+        AppLayout: AppLayoutStub, UsageStatsCards: true, UsageFilters: UsageFiltersStub,
+        UsageTable: true, UsageExportProgress: true, UsageCleanupDialog: true,
+        UserBalanceHistoryModal: true, Pagination: true, Select: true,
+        DateRangePicker: true, Icon: true, TokenUsageTrend: true,
+        ModelDistributionChart: true, GroupDistributionChart: true, EndpointDistributionChart: true,
+        UserTokenRanking: true, AdminErrorRequestsTable: true,
+      } },
+    })
+    await vi.advanceTimersByTimeAsync(120)
+    await flushPromises()
+    const vm = wrapper.vm as any
+    const selected = { account_id: 42, native_compaction_v2: true, upstream_model_mismatch: false, request_type: 'live', billing_type: 0 }
+    Object.assign(vm.filters, selected)
+    vm.pagination.page = 4
+    vm.applyFilters()
+    await flushPromises()
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ ...selected, page: 1, stream: undefined }), expect.anything())
+    expect(getStats).toHaveBeenLastCalledWith(expect.objectContaining(selected))
+    expect(getSnapshotV2).toHaveBeenLastCalledWith(expect.objectContaining(selected))
+    expect(getModelStats).toHaveBeenLastCalledWith(expect.objectContaining(selected))
+    expect(vm.breakdownFilters).toMatchObject({ account_id: 42, native_compaction_v2: true })
+
+    list.mockResolvedValueOnce({ items: [{ id: 1, created_at: '2026-11-03T03:00:00Z', model: 'test', request_type: 'stream', output_tokens: 104, duration_ms: 26350, image_count: 0, billing_mode: 'token' }], total: 1 })
+    await vm.exportToExcel()
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ ...selected, page_size: 100, exact_total: true }), expect.anything())
+    const headers = exportMocks.aoa_to_sheet.mock.calls[0][0][0] as string[]
+    const rows = exportMocks.sheet_add_aoa.mock.calls[0][1]
+    expect(rows[0][headers.indexOf('usage.outputTps')]).toBe('3.9 tok/s')
+    expect(exportMocks.saveAs).toHaveBeenCalledOnce()
+
+    vm.filters.error_phase = 'account_auth'
+    vm.switchTab('errors')
+    await flushPromises()
+    expect(listErrors).toHaveBeenLastCalledWith(expect.objectContaining({ account_id: 42, phase: 'account_auth' }), expect.anything())
+    const errorParams = listErrors.mock.calls.at(-1)![0]
+    expect(errorParams).not.toHaveProperty('native_compaction_v2')
+    expect(errorParams).not.toHaveProperty('upstream_model_mismatch')
+    vm.resetFilters()
+    await flushPromises()
+    expect(vm.filters.account_id).toBeUndefined()
+    expect(vm.filters.native_compaction_v2).toBeUndefined()
+    expect(vm.filters.upstream_model_mismatch).toBeUndefined()
+    expect(vm.filters.error_phase).toBeUndefined()
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.useFakeTimers()
     list.mockReset()

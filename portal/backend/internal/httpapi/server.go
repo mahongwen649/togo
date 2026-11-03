@@ -277,6 +277,7 @@ func New(core coreclient.Adapter, auth AuthService, logger *slog.Logger, depende
 	mux.HandleFunc("GET /api/v1/admin/usage/stats", s.scopedAdminUsageAPI)
 	mux.HandleFunc("GET /api/v1/admin/usage/search-users", s.scopedAdminUsageAPI)
 	mux.HandleFunc("GET /api/v1/admin/usage/search-api-keys", s.scopedAdminUsageAPI)
+	mux.HandleFunc("GET /api/v1/admin/usage/search-accounts", s.usageSearchAccounts)
 	mux.HandleFunc("GET /api/v1/admin/usage/cleanup-tasks", s.coreAdminAPI)
 	mux.HandleFunc("GET /api/v1/admin/ops/request-errors", s.coreAdminAPI)
 	mux.HandleFunc("GET /api/v1/admin/ops/request-errors/{errorID}", s.coreAdminAPI)

@@ -70,9 +70,11 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-stream" :row="row" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
       </div>
     </div>
   `,
@@ -107,6 +109,39 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('identifies compaction records and explains audited response model mismatches', () => {
+    const wrapper = mount(UsageTable, {
+      props: { data: [
+        { ...baseImageRow, request_id: 'variant', model: 'model-latest', upstream_response_model: 'model-2026-11-03', upstream_model_mismatch: true, native_compaction_v2: true },
+        { ...baseImageRow, request_id: 'different', model: 'model', upstream_response_model: 'other-model', upstream_model_mismatch: true },
+        { ...baseImageRow, request_id: 'matched', upstream_response_model: 'gpt-image-2', upstream_model_mismatch: false },
+      ], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.findAll('[data-testid="native-compaction-badge"]')).toHaveLength(1)
+    const audits = wrapper.findAll('[data-testid="upstream-model-audit"]')
+    expect(audits).toHaveLength(2)
+    expect(audits[0].text()).toContain('usage.modelVariant')
+    expect(audits[1].text()).toContain('usage.modelMismatch')
+    expect(audits[1].attributes('title')).toContain('other-model')
+    wrapper.unmount()
+  })
+  it('shows output TPS beside latency and a dash for image requests', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          { ...baseImageRow, request_id: 'text', billing_mode: 'token', image_count: 0, output_tokens: 104, duration_ms: 26350, first_token_ms: 3940, request_type: 'stream' },
+          baseImageRow,
+        ],
+        loading: false, columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.findAll('[data-testid="output-tps"]').map((cell) => cell.text())).toEqual(['3.9 tok/s', '—'])
+    expect(wrapper.text()).toContain('26.35s')
+    expect(wrapper.text()).toContain('3.94s')
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,

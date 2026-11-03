@@ -4,6 +4,8 @@
  * 首 Token（TTFT）：10s 内正常，10-30s 偏慢，30-60s 缓慢，60s 及以上严重。
  * 总耗时：流式请求整体时长天然更长，阈值放宽为 1min / 3min / 5min。
  */
+import type { UsageLog } from '@/types'
+
 export type LatencySeverity = 'good' | 'warn' | 'slow' | 'critical'
 
 export const FIRST_TOKEN_THRESHOLDS_MS = {
@@ -66,4 +68,18 @@ export const LATENCY_BAR_TO_CLASSES: Record<LatencySeverity, string> = {
   warn: 'to-amber-400',
   slow: 'to-orange-500',
   critical: 'to-red-500',
+}
+
+// Keep the same output-rate definition and exclusions as Core.
+export const formatUsageOutputRate = (row: Pick<UsageLog,
+  'output_tokens' | 'duration_ms' | 'image_count' | 'image_output_tokens' | 'billing_mode' | 'request_type'
+>): string => {
+  const { output_tokens: outputTokens, duration_ms: durationMs } = row
+  if (row.image_count > 0 || row.image_output_tokens > 0 || row.billing_mode === 'image'
+    || (row.request_type && !['sync', 'stream', 'ws_v2', 'cyber'].includes(row.request_type))
+    || !Number.isFinite(outputTokens) || outputTokens <= 0
+    || durationMs == null || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return '—'
+  }
+  return `${(outputTokens * 1000 / durationMs).toFixed(1)} tok/s`
 }
