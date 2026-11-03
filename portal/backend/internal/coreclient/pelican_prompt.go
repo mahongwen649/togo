@@ -15,12 +15,34 @@ import (
 // interactive AccountPromptRequest it uses the configured administrator key,
 // never a fallback from a rejected user request. Core data is read-only.
 func (a *HTTPAdapter) PelicanAccountPromptRequest(ctx context.Context, id int64, model, prompt, requestID string, efforts ...string) (Response, error) {
+	effort := "high"
+	if len(efforts) > 0 {
+		effort = efforts[0]
+	}
+	return a.serverAccountPromptRequest(ctx, id, model, prompt, requestID, effort)
+}
+
+// ScheduledAccountPromptRequest is a Portal-owned background job authorized
+// when an administrator creates a plan. It never stores or reuses a user JWT.
+func (a *HTTPAdapter) ScheduledAccountPromptRequest(ctx context.Context, id int64, model, prompt, requestID, effort string) (Response, error) {
+	if strings.TrimSpace(prompt) == "" || len(prompt) > 64000 || len(model) > 256 {
+		return Response{}, errors.New("检查题目或模型无效")
+	}
+	switch effort {
+	case "", "none", "minimal", "low", "medium", "high", "xhigh":
+	default:
+		return Response{}, errors.New("思考程度无效")
+	}
+	return a.serverAccountPromptRequest(ctx, id, model, prompt, requestID, effort)
+}
+
+func (a *HTTPAdapter) serverAccountPromptRequest(ctx context.Context, id int64, model, prompt, requestID, effort string) (Response, error) {
 	if id <= 0 || requestID == "" {
-		return Response{}, errors.New("无效的绘图检查账号")
+		return Response{}, errors.New("无效的检查账号")
 	}
 	response, err := a.AdminMarketRequest(ctx, http.MethodGet, fmt.Sprintf("/api/v1/admin/accounts/data?ids=%d&include_proxies=true", id), nil, "")
 	if err != nil || response.StatusCode != http.StatusOK {
-		return Response{}, errors.New("Core 拒绝读取绘图检查账号配置")
+		return Response{}, errors.New("Core 拒绝读取检查账号配置")
 	}
 	var envelope struct {
 		Code int `json:"code"`
@@ -30,7 +52,7 @@ func (a *HTTPAdapter) PelicanAccountPromptRequest(ctx context.Context, id int64,
 		} `json:"data"`
 	}
 	if json.Unmarshal(response.Body, &envelope) != nil || envelope.Code != 0 || len(envelope.Data.Accounts) != 1 {
-		return Response{}, errors.New("Core 未返回唯一绘图账号配置")
+		return Response{}, errors.New("Core 未返回唯一检查账号配置")
 	}
 	account := envelope.Data.Accounts[0]
 	request, actualModel, chat, err := account.promptRequest(ctx, model, prompt)
@@ -40,21 +62,19 @@ func (a *HTTPAdapter) PelicanAccountPromptRequest(ctx context.Context, id int64,
 	// Keep the same drawing effort while avoiding affinity to a previous probe.
 	var payload map[string]any
 	if err = json.NewDecoder(request.Body).Decode(&payload); err != nil {
-		return Response{}, errors.New("无法构造绘图请求")
+		return Response{}, errors.New("无法构造检查请求")
 	}
 	request.Body.Close()
-	effort := "high"
-	if len(efforts) > 0 {
-		effort = efforts[0]
-	}
-	if chat {
-		payload["reasoning_effort"] = effort
-	} else {
-		payload["reasoning"] = map[string]string{"effort": effort}
+	if effort != "" {
+		if chat {
+			payload["reasoning_effort"] = effort
+		} else {
+			payload["reasoning"] = map[string]string{"effort": effort}
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return Response{}, errors.New("无法构造绘图请求")
+		return Response{}, errors.New("无法构造检查请求")
 	}
 	request.Body = io.NopCloser(bytes.NewReader(body))
 	request.ContentLength = int64(len(body))
@@ -73,11 +93,11 @@ func (a *HTTPAdapter) PelicanAccountPromptRequest(ctx context.Context, id int64,
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()
 		}
-		return Response{}, errors.New("绘图账号上游连接失败")
+		return Response{}, errors.New("检查账号上游连接失败")
 	}
 	defer upstream.Body.Close()
 	if upstream.StatusCode < 200 || upstream.StatusCode >= 300 {
-		return promptEvents(actualModel, "", fmt.Sprintf("绘图账号返回 HTTP %d", upstream.StatusCode)), nil
+		return promptEvents(actualModel, "", fmt.Sprintf("检查账号返回 HTTP %d", upstream.StatusCode)), nil
 	}
 	text, message := readPromptAnswerMode(upstream.Body, chat, true)
 	if ctx.Err() != nil {

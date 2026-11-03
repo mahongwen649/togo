@@ -53,6 +53,8 @@ export interface ScheduledCheckPlan {
   id: number
   account_id: number
   model_id: string
+  reasoning_effort?: string
+  prompt?: string
   cron_expression: string
   enabled: boolean
   max_results: number
@@ -67,6 +69,7 @@ export interface ScheduledCheckResult {
   plan_id: number
   status: string
   response_text: string
+  html?: string
   error_message: string
   latency_ms: number
   started_at: string
@@ -96,19 +99,29 @@ export async function updateCheckAccountGroups(id: number, groupIds: number[]) {
   return data
 }
 
-const scheduledPath = (accountId: number) => `${base}/${accountId}/scheduled-test-plans`
+const scheduledPath = (accountId: number) => `${base}/${accountId}/schedules`
+
+export async function listLegacyScheduledChecks(accountId: number) {
+  const { data } = await apiClient.get<ScheduledCheckPlan[]>(`${base}/${accountId}/scheduled-test-plans`)
+  return data || []
+}
+
+export async function pauseLegacyScheduledCheck(accountId: number, planId: number) {
+  const { data } = await apiClient.put<ScheduledCheckPlan>(`${base}/${accountId}/scheduled-test-plans/${planId}`, { enabled: false })
+  return data
+}
 
 export async function listScheduledChecks(accountId: number) {
   const { data } = await apiClient.get<ScheduledCheckPlan[]>(scheduledPath(accountId))
   return data || []
 }
 
-export async function createScheduledCheck(accountId: number, payload: { model_id: string; cron_expression: string; enabled: boolean }) {
+export async function createScheduledCheck(accountId: number, payload: { model_id: string; reasoning_effort?: string; prompt?: string; cron_expression: string; enabled: boolean }) {
   const { data } = await apiClient.post<ScheduledCheckPlan>(scheduledPath(accountId), payload)
   return data
 }
 
-export async function updateScheduledCheck(accountId: number, planId: number, payload: { model_id?: string; cron_expression?: string; enabled?: boolean }) {
+export async function updateScheduledCheck(accountId: number, planId: number, payload: { model_id?: string; reasoning_effort?: string; prompt?: string; cron_expression?: string; enabled?: boolean }) {
   const { data } = await apiClient.put<ScheduledCheckPlan>(`${scheduledPath(accountId)}/${planId}`, payload)
   return data
 }

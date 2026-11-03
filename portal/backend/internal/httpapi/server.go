@@ -112,6 +112,7 @@ func New(core coreclient.Adapter, auth AuthService, logger *slog.Logger, depende
 	}
 	mux := http.NewServeMux()
 	s.registerAccountChecks(mux)
+	s.registerPortalAccountSchedules(mux)
 	s.registerExclusive(mux)
 	if s.exclusive.Enabled {
 		if err := s.exclusive.Validate(); err != nil || s.portalDB == nil {

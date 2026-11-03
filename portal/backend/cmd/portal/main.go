@@ -20,6 +20,7 @@ import (
 	"github.com/jqcode/portal/backend/internal/lottery"
 	"github.com/jqcode/portal/backend/internal/passwordreset"
 	"github.com/jqcode/portal/backend/internal/rechargepromo"
+	"github.com/jqcode/portal/backend/internal/riskcontrol"
 	"github.com/jqcode/portal/backend/internal/storage"
 	"github.com/jqcode/portal/backend/internal/username"
 )
@@ -154,12 +155,23 @@ func main() {
 		os.Exit(1)
 	}
 	pelicanRunner := httpapi.NewPelicanRunner(portalDB, adapter.WithAdminAPIKey(adminAPIKey), logger)
+	accountScheduleRunner := httpapi.NewAccountScheduleRunner(portalDB, adapter.WithAdminAPIKey(adminAPIKey), logger)
 	if portalDB != nil {
 		go pelicanRunner.Run(appContext)
+		go accountScheduleRunner.Run(appContext)
+	}
+	handler := httpapi.New(adapter.WithAdminAPIKey(adminAPIKey), authService, logger, companyService, usernameRegistry, passwordResetService, rechargeCampaign, lotteryService, corePaymentDB, httpapi.NewPortalDatabase(portalDB), accountPayment, exclusive, pelicanRunner)
+	if portalDB != nil && envBool("PORTAL_RISK_BAN_ENABLED", true) {
+		guard := &riskcontrol.Guard{DB: portalDB, Core: adapter.WithAdminAPIKey(adminAPIKey), Logger: logger}
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/v1/internal/risk-check", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+		mux.Handle("/", handler)
+		handler = guard.Middleware(mux)
+		go guard.Run(appContext)
 	}
 	server := &http.Server{
 		Addr:              listenAddress,
-		Handler:           httpapi.New(adapter.WithAdminAPIKey(adminAPIKey), authService, logger, companyService, usernameRegistry, passwordResetService, rechargeCampaign, lotteryService, corePaymentDB, httpapi.NewPortalDatabase(portalDB), accountPayment, exclusive, pelicanRunner),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -181,6 +193,9 @@ func main() {
 		err := server.Shutdown(shutdownContext)
 		if drainErr := pelicanRunner.Shutdown(shutdownContext); drainErr != nil {
 			logger.Error("pelican shutdown drain timed out", "error", drainErr)
+		}
+		if drainErr := accountScheduleRunner.Shutdown(shutdownContext); drainErr != nil {
+			logger.Error("account schedule shutdown drain timed out", "error", drainErr)
 		}
 		cancel()
 		if err != nil {

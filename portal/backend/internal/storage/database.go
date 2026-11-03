@@ -87,6 +87,12 @@ var pelicanCheckPromptMigration string
 //go:embed migrations/026_pelican_reasoning_effort.sql
 var pelicanReasoningEffortMigration string
 
+//go:embed migrations/027_account_check_schedules.sql
+var accountCheckSchedulesMigration string
+
+//go:embed migrations/028_risk_bans.sql
+var riskBansMigration string
+
 func Open(ctx context.Context, databaseURL string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
@@ -177,6 +183,12 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	}
 	if _, err := db.ExecContext(ctx, pelicanReasoningEffortMigration); err != nil {
 		return fmt.Errorf("apply pelican reasoning effort migration: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, accountCheckSchedulesMigration); err != nil {
+		return fmt.Errorf("apply account check schedules migration: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, riskBansMigration); err != nil {
+		return fmt.Errorf("apply risk bans migration: %w", err)
 	}
 	return nil
 }

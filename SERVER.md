@@ -1,5 +1,52 @@
 # TogoAPI Server Handoff
 
+## Core official v0.2.19 upgrade — 2026-10-29
+
+- Local `core/` fast-forwarded to official main `a3298b46ebe239fb0720b068a1eb3383955bdac2`, clean. Production deploys stable `v0.2.19` (published 2026-10-28 18:16 UTC+08:00), peeled release commit `dece26153621959ccd7635814f4b2d08304e681a`; extra main OAuth changes are not deployed.
+- Official image `weishaw/sub2api:0.2.19`, ID/digest `sha256:969e5c0fddc13f52be2772ea86e8e03ee2261f80ff08495916ffff68292c8380`; source/revision/binary verified. Core started 11:22:10 UTC+08:00, healthy, zero restarts. All twelve other container IDs/start times unchanged.
+- Backup `/opt/backups/sub2api-core-v0.2.19-20261029-112118/`: 325842300-byte PostgreSQL custom dump, readable 88883-byte restore listing, Compose/environment/runtime overrides and snapshots; SHA-256 checks passed. Full database restore was not rehearsed. Rollback image `togoapi/sub2api:rollback-core-before-v0.2.19-20261029-112118`.
+- Migrations 247 (scoped admin keys) and 248 (image-count billing flag, default false) applied; all 297 old checksums preserved, all 299 match release. Existing groups, Sol price API, config/override files and recharge parameters (1/0/0) unchanged. Sol 500K boundary tests passed on the new billing implementation.
+- Release frontend: 37 files / 781 tests, ESLint, type check and build passed. Backend migration/config/protocol suites and 739 changed-file test functions selected for regression passed, plus deployed Sol override and production Portal Core-client tests. New scoped-admin database tests used isolated ephemeral PostgreSQL; test containers/network cleaned up. No paid synthetic inference request.
+- Public/internal Core, Portal, Imgtool, independent AI and NewSub checks passed; authenticated APIs code 0, anonymous models 401. Nginx validates with existing protocol-option warnings. Cutover 11:22:01–11:22:10 recorded 12 model 502 responses; through 11:27:52, 54 post-start model responses were 200, zero model 5xx and no ERROR/FATAL/PANIC logs. This is a limited observation window; internal upstream warning/failure statuses still occurred.
+- Details/rollback: `artifacts/core-upgrade-20261029.md`; source/scripts/logs `/opt/builds/sub2api-core-v0.2.19-20261029/`. Existing local Portal and documentation edits preserved.
+
+## Core official v0.2.18 upgrade — 2026-10-24
+
+- Local `core/` fast-forwarded 47 commits from `b0a02a330` to official main `37067e8e340e9440d173a92b4faa05e8ce58368f`, clean. Production uses stable `v0.2.18`, release commit `ac1b8f1271be0d674fa6f074403c1410f30a3a81`, published 2026-10-23 15:44 UTC+08:00. The additional scoped-admin-key changes on main were not deployed.
+- Official image `weishaw/sub2api:0.2.18`, digest/image ID `sha256:468a0b0e541e4becc05f1cf57826159235ea27a49a09f3dc2da6a43fcc05a22d`; source, revision and executable version verified. Core started 2026-10-24 15:35:48 UTC+08:00, healthy, zero restarts. All twelve other container IDs/start times were preserved, including independent AI and NewSub instances.
+- Backup `/opt/backups/sub2api-core-v0.2.18-20261024-153454/`: 319833236-byte PostgreSQL custom dump, readable 88883-byte restore list, protected runtime/Compose/pricing-override snapshots and verified SHA-256 manifest. Rollback image `togoapi/sub2api:rollback-core-before-v0.2.18-20261024-153455`. Full restore was not rehearsed.
+- Migration 246 applied; all 296 existing checksums preserved and all 297 records match release source. It enables image generation only for existing Gemini/Antigravity groups; production had none of those or composite groups, and group settings remained unchanged.
+- Preserved config.yaml, model_pricing_overrides.json, runtime environment, Sol base-price API, and recharge settings (1 / 0 / 0). New-version offline boundary tests confirm Sol total input <=500000 uses base rates; >500000 applies input/cache x2 and output x1.5. Official Grok Fast price correction is included.
+- Release-source frontend 644 tests in 32 files, type check and build passed. Go 1.27.3 migration/domain/config/protocol packages and changed handler/DTO/repository/service regression passed; production Portal Core-client tests and deployed Sol override tests passed. Test containers were resource-limited and automatically removed. No paid synthetic inference request was made.
+- Internal/public Core, Portal, Imgtool, AI and NewSub checks passed, admin account/group APIs returned code 0, unauthenticated models returned expected 401. Nginx check passed with existing protocol-option warnings. Cutover 15:35:41–15:35:48 recorded five model 502 responses; initial post-start observation had no model 5xx or ERROR/FATAL/PANIC. Existing pre-upgrade grok-web-search missing-price errors are not claimed fixed.
+- Details/rollback: `artifacts/core-upgrade-20261024.md`; scripts/logs/source: `/opt/builds/sub2api-core-v0.2.18-20261024/` and local `artifacts/`. Existing uncommitted Portal and documentation changes were preserved.
+- Final observation through 15:37:47 UTC+08:00: eight completed post-start model requests returned 200, zero model 5xx, no ERROR/FATAL/PANIC; Core healthy with zero restarts. Backup hashes, all 297 migrations, live dependency identities, runtime override and pricing/group snapshots reverified. This is a short observation window, not proof that pre-existing upstream/pricing errors are resolved.
+
+## Origin TLS outage repaired — 2026-10-23
+
+- Root cause: the static shared Portal/Core origin certificate expired at 2026-10-23 04:03:01 UTC+08:00, producing Cloudflare 526 while application containers remained healthy. Nginx now reads `/etc/letsencrypt/live/togoapi.com/`; the replacement covers `togoapi.com` and `api.togoapi.com`, valid until 2027-01-21 09:03:40 UTC+08:00.
+- Renewed Imgtool's nearly expired certificate as well, valid until 2027-01-21 09:04:27 UTC+08:00. Both lineages now use automatic HTTP-01 webroot validation at `/var/www/togoapi-acme`, with a port-80 challenge exception, active/enabled `certbot.timer`, and the existing Nginx validation/reload deploy hook. Cloudflare TLS settings were not changed.
+- Both `certbot renew --cert-name <name> --dry-run --run-deploy-hooks --non-interactive` simulations passed, including the Nginx reload hook. Existing protocol-option warnings remain non-fatal. The separate, previously failing `ppt.togoapi.com` renewal lineage was not modified in this repair.
+- Public Portal homepage/recharge admin/health, Core admin/health, Imgtool health, AI health, Gift and Lottery returned 200. All 13 container IDs, images, start times and restart counts matched the pre-change baseline. Backups: `/opt/backups/origin-tls-20261023-020132/`; verification script: `artifacts/verify-origin-tls-20261023.py`. The expired static certificate must not be restored to production.
+
+## GPT-6.1 Sol 500K billing override — 2026-10-21
+
+- At the user's request, Tokyo Core (`/opt/sub2api`, container `sub2api`) now uses `pricing.override_file: /app/data/model_pricing_overrides.json` in `data/config.yaml`. The override contains only `gpt-6.1-sol`: `long_context_input_token_threshold=500000`, input/cache multiplier `2`, output multiplier `1.5`. Total input includes cached tokens; exactly 500,000 stays at base rates. This is a local billing policy, not a change to upstream charges.
+- Backups and validation evidence: `/opt/backups/sub2api-sol-500k-20261021-103311/`. Original config, Compose file, pricing catalog, and sanitized API/container baselines were saved before editing. Core restarted at 2026-10-21 10:33:29 UTC+08:00 using the same container and image; pricing loaded successfully with custom-file watching enabled. Other containers retained their IDs, images and start times; base-price API responses, group and channel configurations matched their baseline. Internal/public Core and Portal health checks returned 200.
+- Rollback: restore `config.yaml` from that backup to `/opt/sub2api/data/config.yaml`, then restart only `sub2api`. The unreferenced override JSON can remain in place. Do not overwrite the raw synchronized `model_pricing.json`: future remote catalog updates should continue, with the local override applied on top. Historical usage is not repriced.
+- Reproducible operation/verification scripts: `artifacts/configure-sol-500k-20261021.py` and `artifacts/sol_500k_runtime_config_test.go`. The latter uses the deployed pricing files and the matching v0.2.17 billing implementation in a temporary network-disabled container.
+- Boundary validation passed: total input (including cache) 272001, 300000, 499999 and 500000 does not apply the surcharge; 500001 and 600000 applies input/cache x2 and output x1.5. Every parsed model price was compared before/after; only the three intended GPT-6.1 Sol fields changed. The validation container removed itself on completion. The initial production observation had no new requests in the 272K–500K range, so boundary evidence is from the offline billing test, not a paid synthetic request.
+- User subsequently authorized one real ~300K test. At 2026-10-21 10:48:13–10:48:43 UTC+08:00, a synthetic filler request through public `/v1/responses` using the administrator's existing test key (ID 593, group 57) completed HTTP 200 with `OK`. Upstream usage and Core record ID `1779462` both show 300033 input tokens, 5 output tokens, zero cached input. `long_context_billing_applied=false`; input cost `0.600066`, output `0.000050`, total `0.600116`, actual cost `0.1200232` at group rate `0.2` (Core USD accounting). Evidence: backup directory `live-300k-test.json`; script `artifacts/test-sol-300k-live-20261021.py`. No retries or extra inference calls were made.
+
+## Independent ai.togoapi.com instance — 2026-10-20
+
+- Public site: `https://ai.togoapi.com`; official Sub2API `v0.2.17`, release commit `060d0160417782cd962a0c7f460f6cd4565d4916`, image `weishaw/sub2api:0.2.17` (`sha256:44b59fc74b0b582750ef5f38146782db177767ef9d3f34351f1c75c157b1bb88`).
+- Independent local repository: `E:\code\ai-sub2api`. Tokyo deployment: `/opt/ai-sub2api/source` and `/opt/ai-sub2api/runtime`. Compose project `ai-sub2api`; containers `ai-sub2api`, `ai-postgres`, `ai-redis`; application binding `127.0.0.1:8082`. Credentials remain in runtime `.env` with mode `600`.
+- New Nginx site: `/etc/nginx/sites-available/ai-sub2api`. Let's Encrypt certificate: `/etc/letsencrypt/live/ai.togoapi.com/`, expires 2027-01-18 10:34:13 Asia/Shanghai. HTTP-01 webroot `/var/www/ai-sub2api-acme`, existing `certbot.timer` and Nginx reload hook enabled; renewal dry-run passed.
+- Public homepage/login/health and administrator login passed. Unauthenticated models return expected 401. All three containers are healthy with zero restarts. Fresh database contains one administrator and zero upstream accounts/API keys; no paid inference was attempted. The administrator must personally complete the official first-login compliance acknowledgement before admin APIs are available (expected 423 until acknowledged).
+- All ten previously running container IDs, images, start times, restart counts, mounts and health states matched the pre-deployment baseline; existing Nginx site files were preserved. Portal/Core/Imgtool/NewSub/Gift/Lottery public checks passed.
+- Deployment baseline and verification report: `/opt/ai-sub2api/operations/`. Local login and operations guide: `E:\code\ai-sub2api\DEPLOYMENT.md`. The old staging directory `/opt/aisakura-sub2api` has been renamed; use the new directory and Compose project name.
+
 Last updated: 2026-10-16 (Asia/Shanghai)
 
 This is the deployment handoff for future sessions. It deliberately contains no passwords, private-key contents, Admin API Keys, database credentials, or application secrets.
@@ -84,6 +131,17 @@ The Tokyo Tencent Cloud firewall currently permits SSH `22`, HTTP `80`, HTTPS `4
 
 ## Core deployment
 
+Operational record, 2026-10-16 (official `v0.2.17` deployment):
+
+- Official `v0.2.17` was published at 12:41:43 Asia/Shanghai, release commit `060d0160417782cd962a0c7f460f6cd4565d4916`. Local `core/` fast-forwarded 47 commits from `9c2cca9e6` to main `b0a02a3304a0a78cdd003ddda1dd23ba02c03084`, clean; main differs from the release only in VERSION. Updates cover Gemini 4 Argon/thinking, Vertex handling, payment/refund correctness, Responses timestamps and model routing.
+- Production runs official `weishaw/sub2api:0.2.17`, digest/image ID `sha256:44b59fc74b0b582750ef5f38146782db177767ef9d3f34351f1c75c157b1bb88`. Source/revision/version were verified. Core started at 14:27:49 Asia/Shanghai and is healthy with zero restarts. Other application/database/cache container IDs and start times were preserved.
+- Verified 293319780-byte PostgreSQL custom backup, readable 88883-byte restore listing, protected runtime/Compose snapshots, migration/pricing snapshots and rollback image metadata are under `/opt/backups/sub2api-core-v0.2.17-20261016-142705/`. SHA-256 checks passed. Full database restore was not rehearsed.
+- No database migrations were added; all 296 records match official source. Runtime environment and recharge multiplier `1`, subscription USD-to-CNY rate `0`, recharge fee rate `0` were preserved. Active schedulable OpenAI accounts were all API Key accounts, so the new GPT-5.5 subscription retirement rule does not affect their routing. No account/model settings were changed.
+- Frontend 584 tests across 31 files, type checking and production build passed. Go 1.27.2 migration/domain/config/protocol/Antigravity/payment-provider packages, changed handler/admin/routes/service tests, and Portal Core-client regression passed in isolated resource-limited containers, which were removed automatically. Sources/logs: `/opt/builds/sub2api-core-v0.2.17-20261016/` and local `artifacts/core-*-20261016.*`.
+- Internal/public Core, admin UI, Portal, Imgtool and NewSub checks returned `200`; unauthenticated models returned expected `401`; authenticated accounts/groups APIs returned `200`, application code `0`. Nginx validation passed with existing protocol-option warnings. Recreation at 14:27:43–14:27:49 recorded 3 model `502` responses. Initial post-start checks showed no model `5xx` or ERROR/FATAL/PANIC logs. Pre-upgrade logs included missing `grok-web-search` pricing and upstream `503` warnings; this deployment does not establish resolution of those existing issues.
+- Detailed report and rollback commands: `artifacts/core-upgrade-20261016.md`. Deployment/verification scripts: `artifacts/upgrade-core-20261016.sh`, `artifacts/verify-core-20261016.sh`. Rollback image: `togoapi/sub2api:rollback-core-before-v0.2.17-20261016-142705`.
+- Final observation through 14:31:28 Asia/Shanghai: 39 post-start model `200`, zero model `5xx`, no ERROR/FATAL/PANIC logs, healthy with zero restarts. Backup hashes, all 296 migrations, pricing and live dependency identities were reverified successfully. Observation is limited to this short window; no synthetic paid inference request was made.
+
 Operational record, 2026-10-14 (official `v0.2.16` deployment):
 
 - Local `core/` fast-forwarded 80 commits from `3a6fd1c9d` to official `Wei-Shaw/sub2api` main `9c2cca9e627291bc719bada3d57de23b625a4180`, with a clean working tree. The latest stable release is `v0.2.16`, published 2026-10-13 15:20:24 Asia/Shanghai, commit `01842576b3d5c1e2545b5a99ad555d36e28ed306`. Main differs from the release only in VERSION and sponsor documentation/assets. Updates include Gemini explicit caching/Vertex support, group localization, account scheduling and Responses fallback fixes, and GPT-6.1 Sol subscription long-context billing corrections.
@@ -143,8 +201,8 @@ The Tokyo server runs the production Sub2API Core database restored from the fin
 | Deployment directory | `/opt/sub2api` |
 | Compose file | `/opt/sub2api/docker-compose.local.yml` |
 | Secret environment file | `/opt/sub2api/.env` |
-| Current Core version | `Sub2API 0.2.16` (official release `01842576b3d5c1e2545b5a99ad555d36e28ed306`) |
-| Current image | `weishaw/sub2api:0.2.16` (`sha256:799e9b4ee9e3164f13fe74f4df93022048cb902eda533b98fe5751c883eb1a7c`) |
+| Current Core version | `Sub2API 0.2.18` (official release `ac1b8f1271be0d674fa6f074403c1410f30a3a81`) |
+| Current image | `weishaw/sub2api:0.2.18` (`sha256:468a0b0e541e4becc05f1cf57826159235ea27a49a09f3dc2da6a43fcc05a22d`) |
 | Core container | `sub2api` |
 | PostgreSQL container | `sub2api-postgres` |
 | Redis container | `sub2api-redis` |
@@ -780,12 +838,12 @@ Origin certificate:
 | --- | --- |
 | Issuer | Let's Encrypt |
 | Names | `api.togoapi.com`, `togoapi.com` |
-| Full chain | `/etc/nginx/ssl/togoapi/fullchain.pem` |
-| Private key | `/etc/nginx/ssl/togoapi/privkey.pem` |
-| Valid until | 2026-10-22 |
-| Renewal | Manual DNS-01; automatic renewal is not configured |
+| Full chain | `/etc/letsencrypt/live/togoapi.com/fullchain.pem` |
+| Private key | `/etc/letsencrypt/live/togoapi.com/privkey.pem` |
+| Valid until | 2027-01-21 09:03:40 UTC+08:00 |
+| Renewal | HTTP-01 webroot `/var/www/togoapi-acme`; active/enabled `certbot.timer` |
 
-Renew or automate the certificate before expiry. The temporary DNSPod `_acme-challenge` TXT records used for issuance can be removed.
+Nginx serves HTTP ACME challenges directly and redirects other HTTP traffic to HTTPS. Certbot's deploy hook validates and reloads Nginx after renewal.
 
 Imgtool uses a separate Let's Encrypt certificate:
 
@@ -794,10 +852,10 @@ Imgtool uses a separate Let's Encrypt certificate:
 | Name | `img.togoapi.com` |
 | Full chain | `/etc/letsencrypt/live/img.togoapi.com/fullchain.pem` |
 | Private key | `/etc/letsencrypt/live/img.togoapi.com/privkey.pem` |
-| Valid until | 2026-10-23 |
-| Renewal | Manual DNS-01; `certbot.timer` is disabled |
+| Valid until | 2027-01-21 09:04:27 UTC+08:00 |
+| Renewal | HTTP-01 webroot `/var/www/togoapi-acme`; active/enabled `certbot.timer` |
 
-The manual renewal scripts are under `/usr/local/sbin/imgtool-certbot-*`; the corresponding source scripts are under `imgtool/deploy/`. Renew before expiry, update the temporary DNS TXT challenge, verify the certificate, and reload Nginx.
+The old `/usr/local/sbin/imgtool-certbot-*` manual DNS scripts are no longer used by the renewal lineage. Use `certbot renew --cert-name img.togoapi.com --dry-run --run-deploy-hooks` to verify automatic renewal.
 
 ## Imgtool deployment
 
@@ -1065,6 +1123,14 @@ Use this sequence for routine deployment verification:
 
 ## Routine operations
 
+### Disk maintenance — 2026-10-16 19:55 Asia/Shanghai
+
+- Removed Docker build cache unused for at least seven days with `docker buildx prune --all --filter until=168h --force`. Build cache decreased from 32.47 GB to 2.734 GB. All 153 images and 246 tagged references, including rollback images, were retained.
+- Used Go's `go clean -cache` in temporary network-disabled containers to clear two verified unused compilation caches: `/opt/builds/sub2api-go-cache/build` and the `sub2api-hotfix-gobuild` volume. Both now occupy 12 KiB. Module download caches and the currently used `pelican-go-build-cache` remain available.
+- Actual filesystem usage decreased by 31,472,910,336 bytes (29.31 GiB): `df` usage fell from 82% to 56%, with available space rising from about 22 GiB to 51 GiB. Database volumes, application data, source snapshots, logs and all backups were retained.
+- All ten production container IDs, images, start times, restart counts, health states and mount sets matched the baseline. Mount list ordering is nondeterministic and was normalized during comparison. Nginx/Imgtool/Gift remained active; public Core/Portal/Imgtool/NewSub/Gift/Lottery checks returned 200. The latest Core upgrade backup SHA-256 manifest passed revalidation.
+- Audit snapshots, prune log and result: `/opt/maintenance/disk-cleanup-20261016/`. Local script: `artifacts/disk-cleanup-20261016.py`. No recurring cleanup or Docker daemon configuration change was introduced. Future cleanups should start with aged build cache; do not use blanket image/volume pruning because unused entries include rollback images and persistent data.
+
 After connecting to the primary Tokyo origin over SSH:
 
 ```bash
@@ -1172,3 +1238,19 @@ The Singapore application and bot containers must remain stopped during the roll
 
 - Published frontend-only `portal-portal-web:pelican-autosave-20261015`; all other container identities including API unchanged. Model/prompt/effort edits save after 800 ms, route leave waits for save, session drafts preserve edits across refresh, visible save/failure status added. Save no longer overwrites edits using a subsequent status request.
 - Ten focused frontend tests and type checking passed; server production build and public health passed. Backup `/opt/backups/pelican-autosave-20261015/`, rollback image `portal-portal-web:rollback-pelican-autosave-20261015`.
+
+## Portal account schedules — 2026-10-20
+
+- User constraint: do not change Core code. The withdrawn Core patch was reversed; local Core tree is clean. Only Portal API/Web were deployed at 10:48 Asia/Shanghai. Core remained official `weishaw/sub2api:0.2.17`, container `2432792006f7db748f07b713e508c5d51757b87e54b2ee16f702ed9fb415a8bb`, image `sha256:44b59fc74b0b582750ef5f38146782db177767ef9d3f34351f1c75c157b1bb88`, started `2026-10-16T06:27:49.374153438Z`. All protected Core/NewSub/Lottery container identities matched before/after.
+- Per-account setup now selects model, reasoning effort, saved prompt and Beijing execution time, then starts or pauses a plan. Portal migration 027 owns plans/results; the runner revalidates administrator privileges through official read-only Core APIs and directly checks the selected account upstream. Existing Core plans remain separately visible; deployment did not change them.
+- Release `/opt/releases/portal-scheduled-check-20261020`; API image `portal-portal-api:schedule-20261020` (`sha256:0851d4d6c579f18a5d2a0f3a073966408c1ac62c0ec476beced02015ece87b85`), Web image `portal-portal-web:schedule-20261020` (`sha256:b696a0a4fa713195dc5f32f742fec01f1b4fc0e01f65ea139712bb90bfb12520`). Verified Portal dump/restore listing, source/Compose snapshots and hashes in `backup/`. Rollback tags: `portal-portal-api:before-schedule-20261020` and `portal-portal-web:before-schedule-20261020`; restore tags to latest and affected source, recreate only Portal API/Web with existing Compose pair and `--no-deps --no-build`, retaining additive tables.
+- Frontend 34 related tests, ESLint, type check and build passed. Full Linux backend suite passed with schedule DB integration against isolated disposable PostgreSQL. Validation containers/network removed. Public health/page checks, unauthenticated schedule 401, deployed bundle, new Portal tables and read-only Core administrator lookup passed; Portal API/Web healthy. Logged-in browser verified the new form and default account model/prompt, daily frequency and effort selection. No recurring test plan was created in production and no additional paid upstream check was sent.
+- Do not activate `/opt/releases/scheduled-check-20261020`: that older staging directory contains the withdrawn Core-based experiment. Current Portal-only source, binaries, logs and identity checks are in the release directory above. Details: `portal/docs/admin-account-checks.md`.
+
+## 用户风控自动封禁 — 2026-10-30
+
+- Portal + Nginx 上线自动封禁，不修改 Core 源码、镜像或数据库结构；只通过官方管理 API 禁用触发风控的用户。必须用 `view=all` 查询错误记录，默认视图会排除业务限制类风控记录。
+- 初次补扫最近 24 小时完成：51 条明确风控事件，用户 ID 5 被禁用，5 个 Key 摘要已保存于 Portal。全部 Key 公网只读请求返回 `403 ACCOUNT_RISK_BANNED` 和中文风控提示；Core 内部原生用户禁用返回 `401 USER_INACTIVE`。正常有效 Key 的模型列表 200，匿名 401，主站/API/Imgtool 健康检查 200。未发送推理请求。
+- Portal API 健康；Core 与其余 12 个容器身份/镜像/启动时间不变。Nginx 配置检查和重载通过。全量 Linux 后端测试通过；新风控测试使用 SQL mock，生产迁移成功且实际扫描/封禁/入口验证通过。
+- 发布目录 `/opt/releases/portal-risk-bans-20261030/`，备份 `/opt/backups/portal-risk-bans-20261030/` 包含 Portal dump/恢复列表、源文件和 Nginx/Compose 备份、部署前用户状态及测试/构建日志。镜像 `portal-portal-api:risk-bans-20261030`，回滚镜像 `portal-portal-api:before-risk-bans-20261030`。回滚先恢复 Nginx，再恢复 Portal 镜像及对应源文件；已禁用用户不会自动解禁。
+- 详细行为、延迟、人工解禁和回滚见 `portal/docs/risk-bans.md`。

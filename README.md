@@ -2,6 +2,8 @@
 
 Server access, deployed infrastructure, Cloudflare and DNS configuration, HTTPS, firewall, incident status, and recovery checklist: [SERVER.md](./SERVER.md)
 
+中文服务器登录、线上地址、部署目录和常用运维命令速查：[DEPLOYMENT.md](./DEPLOYMENT.md)
+
 Canonical local startup and troubleshooting: [LOCAL_DEV.md](./LOCAL_DEV.md)
 
 This workspace separates the public Portal from the Sub2API Core account pool.
