@@ -1,5 +1,13 @@
 # TogoAPI Server Handoff
 
+## Portal usage parity with Core — 2026-11-03
+
+- Deployed application commit `c02088219d33d21671161c39b8ff8d9af8930e3e` to Tokyo Portal. Admin usage now shows output TPS using Core's full-duration formula, searches accounts by name with ID-qualified choices, and supports Live, native-compaction, upstream-model audit, and error-phase filters. Account search returns only ID/name through the caller's authenticated Core API session.
+- Final Portal Web started at 12:10:37 Asia/Shanghai; API started at 12:06:03. API/Web are healthy with zero restarts. All eleven other containers, including Core, retained their image IDs, container IDs, and start times. No migrations or paid synthetic inference were performed.
+- Verified public Portal/Core/Imgtool health, public usage page, release JS/CSS hashes, 20 deployed source files, and anonymous account-search rejection (401). Authenticated browser checks confirmed account selection restricts all 50 displayed records to the selected account, TPS values render, reset works, native-compaction returns records, and the added filter options are present. Browser console has no captured errors.
+- Backup: `/opt/backups/portal-usage-parity-20261103/`, including a 3,153,775-byte PostgreSQL custom dump, readable restore listing, source and protected Compose/environment snapshots; SHA-256 verified. Release scripts/logs: `/opt/releases/portal-usage-parity-20261103/`. Rollback tags: `portal-portal-api:before-usage-parity-20261103` and `portal-portal-web:before-usage-parity-20261103`.
+- Initial frontend cutover exposed unreadable packaged asset directories; corrected image permissions and rebuilt unchanged application source under `assets-usage-parity-20261103` to bypass CDN-cached 404 responses. Final public resources match the rebuilt artifact. Details and rollback commands: `portal/docs/usage-parity-deployment-20261103.md`.
+
 ## Core official v0.2.19 upgrade — 2026-10-29
 
 - Local `core/` fast-forwarded to official main `a3298b46ebe239fb0720b068a1eb3383955bdac2`, clean. Production deploys stable `v0.2.19` (published 2026-10-28 18:16 UTC+08:00), peeled release commit `dece26153621959ccd7635814f4b2d08304e681a`; extra main OAuth changes are not deployed.
