@@ -3,7 +3,6 @@ module github.com/jqcode/portal/backend
 go 1.23.0
 
 require (
-	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/robfig/cron/v3 v3.0.1
 )

@@ -1,5 +1,12 @@
 # TogoAPI Server Handoff
 
+## User automatic risk bans removed — 2026-11-05
+
+- Tokyo Portal API updated at 11:39:32 Asia/Shanghai; public checks passed at 11:40:12. Removed error-log scanning, automatic Core user disabling, and Portal/Nginx risk-key interception. 403 and cyber-policy errors are returned normally. Legacy risk-check returns 204; the retired environment switch is absent.
+- API image `portal-portal-api:no-risk-bans-20261105`, ID `sha256:fb972f7287d0b8c63af1aa5b047f3e436bfc6490bf7c17177aa7ee8b2e1cd694`, healthy with zero restarts. Only Portal API was recreated and Nginx reloaded; all 12 other containers retained identities, images, start times and restart counts.
+- Local and Linux Go tests passed; database/live-upstream tests remained opt-in. Public Portal/Core/Imgtool health 200, valid-key models 200, anonymous models 401, legacy check 204. Historical risk users 5 and 362 are both active; status was unchanged. Sample keys using all three authentication headers match native Core responses; no paid inference was sent.
+- Backup `/opt/backups/disable-risk-bans-20261105/` includes a verified 3,326,325-byte Portal dump and source/configuration snapshots. Release `/opt/releases/disable-risk-bans-20261105/`; rollback image `portal-portal-api:before-no-risk-bans-20261105`. No new migration or user-status changes. If restoring the old image, explicitly set `PORTAL_RISK_BAN_ENABLED=false` and keep Nginx risk interception removed. Details: `portal/docs/risk-bans-removal-20261105.md`.
+
 ## Portal usage parity with Core — 2026-11-03
 
 - Deployed application commit `c02088219d33d21671161c39b8ff8d9af8930e3e` to Tokyo Portal. Admin usage now shows output TPS using Core's full-duration formula, searches accounts by name with ID-qualified choices, and supports Live, native-compaction, upstream-model audit, and error-phase filters. Account search returns only ID/name through the caller's authenticated Core API session.

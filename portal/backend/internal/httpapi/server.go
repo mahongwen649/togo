@@ -127,6 +127,11 @@ func New(core coreclient.Adapter, auth AuthService, logger *slog.Logger, depende
 		}
 	}
 	mux.HandleFunc("GET /health", s.health)
+	// Older Nginx configurations still call this auth_request endpoint. Risk
+	// errors no longer ban users; Core continues to authenticate each request.
+	mux.HandleFunc("/api/v1/internal/risk-check", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/v1/settings/public", s.publicSettings)
 	mux.HandleFunc("GET /api/v1/account-market/recharge", s.accountMarketRecharge)
 	mux.HandleFunc("GET /api/v1/account-market/products", s.accountMarketProducts)
